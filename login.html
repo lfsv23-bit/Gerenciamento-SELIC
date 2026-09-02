@@ -6,45 +6,129 @@
   <title>Login - Controle de Processos</title>
   <link rel="stylesheet" href="css/style.css?v=3.0-inicial-20260902">
   <style>
-    body { min-height:100vh; background:#f1f5f9; display:grid; place-items:center; padding:20px; }
-    .login-shell { width:min(420px, 100%); }
-    .login-brand { display:flex; align-items:center; gap:10px; margin-bottom:18px; color:#0f172a; }
-    .login-brand .dot { width:10px; height:10px; border-radius:999px; background:#22c55e; }
-    .login-card { background:#fff; border:1px solid #dbe3ef; border-radius:14px; padding:24px; box-shadow:0 18px 42px rgba(15,23,42,.1); }
-    .login-card h1 { margin:0 0 6px; font-size:24px; letter-spacing:0; }
-    .login-card p { margin:0 0 20px; color:#64748b; }
-    .login-actions { display:flex; justify-content:flex-end; margin-top:18px; }
+    * { box-sizing:border-box; }
+    body {
+      min-height:100vh;
+      margin:0;
+      display:grid;
+      place-items:center;
+      padding:26px;
+      background:
+        linear-gradient(90deg, rgba(5,20,45,.92) 0%, rgba(10,42,80,.72) 46%, rgba(241,245,249,.82) 100%),
+        url("src/selic-login.jfif") center/cover no-repeat;
+      color:#0f172a;
+    }
+    .login-shell {
+      width:min(980px, 100%);
+      min-height:560px;
+      display:grid;
+      grid-template-columns:1.1fr .9fr;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.35);
+      border-radius:18px;
+      background:rgba(255,255,255,.88);
+      box-shadow:0 28px 80px rgba(15,23,42,.28);
+      backdrop-filter:blur(14px);
+    }
+    .login-panel {
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      min-height:100%;
+      padding:34px;
+      color:#fff;
+      background:linear-gradient(160deg, rgba(15,23,42,.92), rgba(30,64,175,.76));
+    }
+    .login-brand { display:flex; align-items:center; gap:11px; }
+    .login-brand .dot { width:11px; height:11px; border-radius:999px; background:#22c55e; box-shadow:0 0 0 6px rgba(34,197,94,.18); }
+    .login-brand strong { display:block; font-size:17px; }
+    .login-brand .muted { color:rgba(255,255,255,.75); }
+    .login-copy h1 { margin:0 0 14px; max-width:420px; font-size:38px; line-height:1.05; letter-spacing:0; color:#fff; }
+    .login-copy p { margin:0; max-width:470px; color:rgba(255,255,255,.82); font-size:16px; line-height:1.55; }
+    .login-foot { color:rgba(255,255,255,.68); font-size:12px; }
+    .login-form-area { display:grid; align-content:center; padding:46px; background:rgba(255,255,255,.94); }
+    .login-card { width:100%; max-width:390px; margin-left:auto; }
+    .login-card h2 { margin:0 0 8px; font-size:28px; letter-spacing:0; color:#0f172a; }
+    .login-card p { margin:0 0 24px; color:#64748b; line-height:1.45; }
+    .login-card .field { margin-bottom:14px; }
+    .login-card label { display:block; margin-bottom:7px; font-size:12px; font-weight:800; text-transform:uppercase; color:#475569; }
+    .login-card .input {
+      height:44px;
+      border-radius:10px;
+      border-color:#d8e2ef;
+      background:#f8fafc;
+      transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
+    }
+    .login-card .input:focus {
+      background:#fff;
+      border-color:#2563eb;
+      box-shadow:0 0 0 4px rgba(37,99,235,.12);
+      outline:none;
+    }
+    .login-actions { display:flex; justify-content:stretch; margin-top:20px; }
+    .login-actions .btn { width:100%; height:44px; border-radius:10px; font-weight:800; }
+    .login-support {
+      margin-top:18px;
+      padding:12px 14px;
+      border:1px solid #dbeafe;
+      border-radius:10px;
+      background:#eff6ff;
+      color:#1e3a8a;
+      font-size:13px;
+      line-height:1.4;
+    }
     #login_status { min-height:20px; margin-top:12px; color:#64748b; font-size:13px; }
+    @media (max-width:820px) {
+      body { padding:16px; }
+      .login-shell { grid-template-columns:1fr; min-height:auto; }
+      .login-panel { min-height:260px; padding:26px; }
+      .login-copy h1 { font-size:30px; }
+      .login-form-area { padding:28px; }
+      .login-card { max-width:none; }
+    }
   </style>
 </head>
 <body>
   <main class="login-shell">
-    <div class="login-brand">
-      <div class="dot"></div>
-      <div>
-        <strong>Secretaria Executiva</strong>
-        <div class="muted">Controle de Processos</div>
+    <section class="login-panel">
+      <div class="login-brand">
+        <div class="dot"></div>
+        <div>
+          <strong>Secretaria Executiva</strong>
+          <div class="muted">Controle de Processos</div>
+        </div>
       </div>
-    </div>
 
-    <section class="login-card">
-      <h1>Acessar sistema</h1>
-      <p>Entre com o usuario criado no painel do Supabase.</p>
+      <div class="login-copy">
+        <h1>Gestão segura dos processos da SELIC</h1>
+        <p>Acesse o ambiente administrativo para acompanhar processos, contratações, trâmites, fornecedores e atas de registro de preço.</p>
+      </div>
 
-      <form id="login_form">
-        <div class="field">
-          <label for="login_email">E-mail</label>
-          <input id="login_email" class="input" type="email" autocomplete="username" required>
-        </div>
-        <div class="field">
-          <label for="login_password">Senha</label>
-          <input id="login_password" class="input" type="password" autocomplete="current-password" required>
-        </div>
-        <div id="login_status"></div>
-        <div class="login-actions">
-          <button id="login_submit" class="btn primary" type="submit">Entrar</button>
-        </div>
-      </form>
+      <div class="login-foot">Acesso restrito a usuários autorizados.</div>
+    </section>
+
+    <section class="login-form-area">
+      <div class="login-card">
+        <h2>Acessar sistema</h2>
+        <p>Entre com o usuário criado manualmente no painel do Supabase.</p>
+
+        <form id="login_form">
+          <div class="field">
+            <label for="login_email">E-mail</label>
+            <input id="login_email" class="input" type="email" autocomplete="username" required>
+          </div>
+          <div class="field">
+            <label for="login_password">Senha</label>
+            <input id="login_password" class="input" type="password" autocomplete="current-password" required>
+          </div>
+          <div id="login_status"></div>
+          <div class="login-actions">
+            <button id="login_submit" class="btn primary" type="submit">Entrar</button>
+          </div>
+        </form>
+
+        <div class="login-support">Não há cadastro público. Os acessos são criados pelo administrador no Supabase.</div>
+      </div>
     </section>
   </main>
 
