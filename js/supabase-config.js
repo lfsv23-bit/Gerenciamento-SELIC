@@ -3,8 +3,8 @@
 // NUNCA coloque a service_role key neste arquivo.
 
 window.SUPABASE_CONFIG = {
-  url: "https://pdqnwebswjszulxcvxel.supabase.co",
-  publishableKey: "sb_publishable_jlEk5LidiX6wjvbefxjLTQ_xb8BwnFI",
+  url: "",
+  publishableKey: "",
   schema: "public"
 };
 

@@ -38,6 +38,9 @@ html, body {
   color: #e2e8f0;
   border-right: 1px solid rgba(255,255,255,.1);
   padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
 }
 
 .brand {
@@ -100,6 +103,26 @@ html, body {
 }
 .submenu-menu > .submenu a {
   padding-left: 22px;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.sidebar-logout {
+  width: 100%;
+  justify-content: center;
+  border-color: rgba(239, 68, 68, .35);
+  background: rgba(239, 68, 68, .14);
+  color: #fecaca;
+  font-weight: 800;
+}
+
+.sidebar-logout:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
 }
 
 /* Content */
