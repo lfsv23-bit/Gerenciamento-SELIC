@@ -1,7 +1,7 @@
 -- Schema inicial para migrar o sistema Processos Licitatorios 3.0 para Supabase.
 -- Execute este arquivo no SQL Editor do Supabase.
--- Atencao: as policies abaixo liberam leitura/escrita para a anon key durante a fase de teste.
--- Para uso publico, troque por policies com usuarios autenticados.
+-- As policies abaixo exigem Supabase Auth.
+-- A role anon nao recebe permissao de leitura ou escrita nas tabelas do sistema.
 
 create extension if not exists "pgcrypto";
 
@@ -347,10 +347,14 @@ begin
     execute format('drop policy if exists "anon_insert_%I" on public.%I', tabela, tabela);
     execute format('drop policy if exists "anon_update_%I" on public.%I', tabela, tabela);
     execute format('drop policy if exists "anon_delete_%I" on public.%I', tabela, tabela);
-    execute format('create policy "anon_select_%I" on public.%I for select to anon using (true)', tabela, tabela);
-    execute format('create policy "anon_insert_%I" on public.%I for insert to anon with check (true)', tabela, tabela);
-    execute format('create policy "anon_update_%I" on public.%I for update to anon using (true) with check (true)', tabela, tabela);
-    execute format('create policy "anon_delete_%I" on public.%I for delete to anon using (true)', tabela, tabela);
+    execute format('drop policy if exists "authenticated_select_%I" on public.%I', tabela, tabela);
+    execute format('drop policy if exists "authenticated_insert_%I" on public.%I', tabela, tabela);
+    execute format('drop policy if exists "authenticated_update_%I" on public.%I', tabela, tabela);
+    execute format('drop policy if exists "authenticated_delete_%I" on public.%I', tabela, tabela);
+    execute format('create policy "authenticated_select_%I" on public.%I for select to authenticated using (true)', tabela, tabela);
+    execute format('create policy "authenticated_insert_%I" on public.%I for insert to authenticated with check (true)', tabela, tabela);
+    execute format('create policy "authenticated_update_%I" on public.%I for update to authenticated using (true) with check (true)', tabela, tabela);
+    execute format('create policy "authenticated_delete_%I" on public.%I for delete to authenticated using (true)', tabela, tabela);
   end loop;
 end $$;
 
@@ -359,3 +363,16 @@ insert into public.secretarias (sigla) values
   ('SMSPDS'), ('PROCON'), ('FCC'), ('FUNEC'), ('FUNDTUR'), ('SMASC'), ('SMDES'), ('SEGES'),
   ('SMS'), ('SELIC')
 on conflict (sigla) do nothing;
+
+-- Auditoria: esta consulta deve retornar zero linhas para confirmar que nao
+-- sobrou policy aberta para anon nas tabelas do sistema.
+select schemaname, tablename, policyname, roles, cmd
+from pg_policies
+where schemaname = 'public'
+  and roles::text ilike '%anon%'
+  and tablename = any(array[
+    'app_settings','secretarias','tipos_protocolo','assuntos_protocolo','fornecedores',
+    'fornecedor_pessoas','processos','processo_blocos','processo_itens','processo_publicacoes',
+    'irps_registro_preco','irp_itens','atas_registro_preco','ata_itens','ata_publicacoes',
+    'ata_aditivos','ata_aditivo_publicacoes','tramites_internos','tramites_gerais','anexos'
+  ]);

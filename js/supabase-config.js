@@ -4,11 +4,11 @@
 
 window.SUPABASE_CONFIG = {
   url: "",
-  anonKey: "",
+  publishableKey: "",
   schema: "public"
 };
 
 window.isSupabaseConfigured = function isSupabaseConfigured() {
   const cfg = window.SUPABASE_CONFIG || {};
-  return /^https:\/\/.+\.supabase\.co$/i.test(cfg.url || "") && !!cfg.anonKey;
+  return /^https:\/\/.+\.supabase\.co$/i.test(cfg.url || "") && !!cfg.publishableKey;
 };

@@ -22,7 +22,7 @@
       <h1 style="margin:0 0 8px">Migracao para Supabase</h1>
       <p class="muted" style="margin:0">
         Esta pagina envia uma copia dos dados locais deste navegador para o banco online.
-        Ela nao apaga localStorage nem IndexedDB.
+        Ela nao apaga localStorage nem IndexedDB e exige login pelo Supabase Auth.
       </p>
 
       <div class="migration-steps">
@@ -38,6 +38,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-config.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/database.js"></script>
   <script src="js/migracao-supabase.js"></script>
 </body>

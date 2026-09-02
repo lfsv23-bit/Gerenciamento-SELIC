@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - Controle de Processos</title>
+  <link rel="stylesheet" href="css/style.css?v=3.0-inicial-20260902">
+  <style>
+    body { min-height:100vh; background:#f1f5f9; display:grid; place-items:center; padding:20px; }
+    .login-shell { width:min(420px, 100%); }
+    .login-brand { display:flex; align-items:center; gap:10px; margin-bottom:18px; color:#0f172a; }
+    .login-brand .dot { width:10px; height:10px; border-radius:999px; background:#22c55e; }
+    .login-card { background:#fff; border:1px solid #dbe3ef; border-radius:14px; padding:24px; box-shadow:0 18px 42px rgba(15,23,42,.1); }
+    .login-card h1 { margin:0 0 6px; font-size:24px; letter-spacing:0; }
+    .login-card p { margin:0 0 20px; color:#64748b; }
+    .login-actions { display:flex; justify-content:flex-end; margin-top:18px; }
+    #login_status { min-height:20px; margin-top:12px; color:#64748b; font-size:13px; }
+  </style>
+</head>
+<body>
+  <main class="login-shell">
+    <div class="login-brand">
+      <div class="dot"></div>
+      <div>
+        <strong>Secretaria Executiva</strong>
+        <div class="muted">Controle de Processos</div>
+      </div>
+    </div>
+
+    <section class="login-card">
+      <h1>Acessar sistema</h1>
+      <p>Entre com o usuario criado no painel do Supabase.</p>
+
+      <form id="login_form">
+        <div class="field">
+          <label for="login_email">E-mail</label>
+          <input id="login_email" class="input" type="email" autocomplete="username" required>
+        </div>
+        <div class="field">
+          <label for="login_password">Senha</label>
+          <input id="login_password" class="input" type="password" autocomplete="current-password" required>
+        </div>
+        <div id="login_status"></div>
+        <div class="login-actions">
+          <button id="login_submit" class="btn primary" type="submit">Entrar</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/auth.js"></script>
+</body>
+</html>

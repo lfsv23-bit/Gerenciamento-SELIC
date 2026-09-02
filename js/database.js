@@ -14,7 +14,7 @@
     }
     if (!window.__supabaseClient) {
       const cfg = window.SUPABASE_CONFIG;
-      window.__supabaseClient = window.supabase.createClient(cfg.url, cfg.anonKey, {
+      window.__supabaseClient = window.supabase.createClient(cfg.url, cfg.publishableKey, {
         db: { schema: cfg.schema || "public" }
       });
     }
