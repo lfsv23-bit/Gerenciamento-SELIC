@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle de Processos</title>
+  <link rel="stylesheet" href="css/style.css?v=3.0-inicial-20260902">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="dot"></div>
+        <div>
+          <strong>Secretaria Executiva</strong>
+          <div class="muted">Controle de Processos</div>
+        </div>
+      </div>
+      <nav class="nav">
+        <div class="menu">
+          <button class="menu-toggle">⚙️ Controle de Processos</button>
+          <div class="submenu">
+            <a href="#" id="menu-licitatorios">📄 Processos Licitatórios</a>
+            <div class="menu submenu-menu">
+              <button class="menu-toggle">🔁 Trâmites de Processos</button>
+              <div class="submenu">
+                <a href="#" id="menu-tramites-geral">📋 Geral</a>
+                <a href="#" id="menu-tramites-interno">🏢 Interno</a>
+              </div>
+            </div>
+            <a href="#" id="menu-movimentacoes">📌 Movimentações</a>
+          </div>
+        </div>
+        <div class="menu">
+          <button class="menu-toggle">📂 Categoria</button>
+          <div class="submenu">
+            <a href="#" id="menu-cat-credenciamento">🏥 Credenciamento</a>
+            <div class="menu submenu-menu">
+              <button class="menu-toggle">📁 Contratações</button>
+              <div class="submenu">
+                <a href="#" id="menu-cat-contratacoes-pregoes">📌 Pregões</a>
+                <a href="#" id="menu-cat-contratacoes-concorrencias">📌 Concorrências</a>
+                <a href="#" id="menu-cat-contratacoes-dispensas">📌 Dispensas</a>
+                <a href="#" id="menu-cat-contratacoes-inexigibilidades">📌 Inexigibilidades</a>
+              </div>
+            </div>
+            <div class="menu submenu-menu">
+              <button class="menu-toggle">📁 Registro de Preço</button>
+              <div class="submenu">
+                <a href="#" id="menu-cat-rp-irp">📌 IRP</a>
+                <a href="#" id="menu-cat-rp-adesoes">🔗 Adesões</a>
+                <a href="#" id="menu-cat-rp-atas">📋 Atas de Registro de Preço</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <a href="#" id="menu-relatorios">📊 Relatórios</a>
+  <a href="#" id="menu-fornecedores">🏢 Fornecedores</a>
+  <a href="#" id="menu-dashboard">📈 Dashboard</a>
+  <a href="#" id="menu-impressao">🖨️ Imprimir</a>
+  <div class="menu">
+    <button class="menu-toggle">⚙️ Configurações</button>
+    <div class="submenu">
+      <a href="#" id="menu-backup">💾 Backup do Sistema</a>
+      <a href="#" id="menu-restore">📥 Restaurar Backup</a>
+      <div class="menu submenu-menu">
+        <button class="menu-toggle">🔄 Conversores</button>
+        <div class="submenu">
+          <a href="#" id="menu-conversor-itens">📑 Conversor de Itens</a>
+        </div>
+      </div>
+      <a href="#" id="menu-mesclador-etiquetas">🧩 Mesclador de Etiqueta</a>
+
+    </div>
+  </div>
+
+
+
+</nav>
+    </aside>
+
+    <dialog id="dlg_restore" style="width:520px">
+  <div class="modal-head">
+    <strong>Restaurar Backup</strong>
+    <button id="restore_close" class="btn ghost">Fechar</button>
+  </div>
+
+  <div class="modal-body">
+    <input type="file" id="restore_input" accept="application/json" class="input">
+
+    <div id="restore_result" style="margin-top:16px;font-size:14px;color:var(--muted)">
+      Nenhum arquivo selecionado.
+    </div>
+
+    <div style="margin-top:18px;display:flex;justify-content:flex-end;gap:10px">
+      <button id="restore_merge" class="btn">Mesclar dados</button>
+      <button id="restore_replace" class="btn primary">Substituir tudo</button>
+    </div>
+  </div>
+</dialog>
+
+
+    <main id="content" class="content">
+      <div class="wrap">
+        <h1>Bem-vindo 👋</h1>
+        <p>Selecione um módulo no menu lateral para começar.</p>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/licitatorios.js?v=3.0-inicial-20260902"></script>
+  <script src="js/tramites.js?v=2.0-tramites-modal-busca-visivel-20260828"></script>
+  <script>
+    // Mantem os dados digitados em letras maiusculas, exceto campos de link/URL.
+    document.addEventListener("input", (event) => {
+      const field = event.target;
+      if (!field.matches("input, textarea")) return;
+      if (["file", "date", "number", "checkbox", "radio", "url", "email"].includes(field.type)) return;
+
+      const identidade = `${field.id || ""} ${field.name || ""} ${field.placeholder || ""}`.toLowerCase();
+      if (/(link|url|pncp|https?:\/\/)/.test(identidade)) return;
+
+      const start = field.selectionStart;
+      const end = field.selectionEnd;
+      field.value = field.value.toUpperCase();
+
+      if (start !== null && end !== null) {
+        field.setSelectionRange(start, end);
+      }
+    });
+
+    // Troca de abas dinâmicas
+    const content = document.getElementById("content");
+    const menuLicit = document.getElementById("menu-licitatorios");
+    const menuTramitesGeral = document.getElementById("menu-tramites-geral");
+    const menuTramitesInterno = document.getElementById("menu-tramites-interno");
+    const menuMovimentacoes = document.getElementById("menu-movimentacoes");
+    const menuCatCredenciamento = document.getElementById("menu-cat-credenciamento");
+    const menuCatContratacoesPregoes = document.getElementById("menu-cat-contratacoes-pregoes");
+    const menuCatContratacoesConcorrencias = document.getElementById("menu-cat-contratacoes-concorrencias");
+    const menuCatContratacoesDispensas = document.getElementById("menu-cat-contratacoes-dispensas");
+    const menuCatContratacoesInexigibilidades = document.getElementById("menu-cat-contratacoes-inexigibilidades");
+    const menuCatRpIrp = document.getElementById("menu-cat-rp-irp");
+    const menuCatRpAdesoes = document.getElementById("menu-cat-rp-adesoes");
+    const menuCatRpAtas = document.getElementById("menu-cat-rp-atas");
+    const menuConversorItens = document.getElementById("menu-conversor-itens");
+    const menuMescladorEtiquetas = document.getElementById("menu-mesclador-etiquetas");
+    const menuFornecedores = document.getElementById("menu-fornecedores");
+    // Novos menus
+const menuRelatorios = document.getElementById("menu-relatorios");
+const menuDashboard = document.getElementById("menu-dashboard");
+const menuImpressao = document.getElementById("menu-impressao");
+
+menuRelatorios.addEventListener("click", (e) => {
+  e.preventDefault();
+  loadModule(initRelatorios);
+});
+
+menuFornecedores.addEventListener("click", (e) => {
+  e.preventDefault();
+  loadModule(initFornecedores);
+});
+
+menuDashboard.addEventListener("click", (e) => {
+  e.preventDefault();
+  loadModule(initDashboard);
+});
+
+menuImpressao.addEventListener("click", (e) => {
+  e.preventDefault();
+  loadModule(initImpressao);
+});
+const BACKUP_ANEXOS_DB_NAME = "processosLicitatoriosAnexosDB";
+const BACKUP_ANEXOS_DB_VERSION = 1;
+const BACKUP_ANEXOS_STORE = "anexos";
+
+function lerJsonLocalBackup(chave, padrao) {
+  try { return JSON.parse(localStorage.getItem(chave) || JSON.stringify(padrao)); }
+  catch (error) { console.error(`Erro ao ler ${chave}:`, error); return padrao; }
+}
+
+function nomeDataBackup() {
+  const now = new Date();
+  const pad = value => String(value).padStart(2, "0");
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+function abrirBancoBackupAnexos() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(BACKUP_ANEXOS_DB_NAME, BACKUP_ANEXOS_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(BACKUP_ANEXOS_STORE)) {
+        db.createObjectStore(BACKUP_ANEXOS_STORE, { keyPath: "id" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function blobParaDataUrlBackup(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function dataUrlParaBlobBackup(dataUrl) {
+  const [header, base64] = String(dataUrl || "").split(",");
+  const tipo = header.match(/data:([^;]+)/)?.[1] || "application/pdf";
+  const bin = atob(base64 || "");
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: tipo });
+}
+
+async function listarAnexosParaBackup() {
+  if (!window.indexedDB) return [];
+  const db = await abrirBancoBackupAnexos();
+  const registros = await new Promise((resolve, reject) => {
+    const tx = db.transaction(BACKUP_ANEXOS_STORE, "readonly");
+    const request = tx.objectStore(BACKUP_ANEXOS_STORE).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+  db.close();
+
+  const anexos = [];
+  for (const registro of registros) {
+    if (!registro?.id || !registro?.blob) continue;
+    anexos.push({
+      id: registro.id,
+      nome: registro.nome || "anexo.pdf",
+      tipo: registro.tipo || registro.blob.type || "application/pdf",
+      tamanho: registro.tamanho || registro.blob.size || 0,
+      criadoEm: registro.criadoEm || "",
+      atualizadoEm: registro.atualizadoEm || "",
+      dataUrl: await blobParaDataUrlBackup(registro.blob)
+    });
+  }
+  return anexos;
+}
+
+async function restaurarAnexosDoBackup(anexos, limparAntes = false) {
+  if (!window.indexedDB || !Array.isArray(anexos)) return 0;
+  const registros = anexos
+    .filter(anexo => anexo?.id && anexo?.dataUrl)
+    .map(anexo => {
+      const blob = dataUrlParaBlobBackup(anexo.dataUrl);
+      return {
+        id: anexo.id,
+        nome: anexo.nome || "anexo.pdf",
+        tipo: anexo.tipo || blob.type || "application/pdf",
+        tamanho: anexo.tamanho || blob.size,
+        criadoEm: anexo.criadoEm || new Date().toLocaleString("pt-BR"),
+        atualizadoEm: anexo.atualizadoEm || new Date().toLocaleString("pt-BR"),
+        blob
+      };
+    });
+
+  const db = await abrirBancoBackupAnexos();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(BACKUP_ANEXOS_STORE, "readwrite");
+    const store = tx.objectStore(BACKUP_ANEXOS_STORE);
+    if (limparAntes) store.clear();
+    registros.forEach(registro => store.put(registro));
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+  return registros.length;
+}
+
+function mesclarArrayBackup(atual, importado) {
+  const final = [...(Array.isArray(atual) ? atual : [])];
+  (Array.isArray(importado) ? importado : []).forEach(item => {
+    if (!final.some(x => x.id && item.id && x.id === item.id)) final.push(item);
+  });
+  return final;
+}
+
+// BACKUP GERAL DO SISTEMA
+const menuBackup = document.getElementById("menu-backup");
+
+menuBackup.addEventListener("click", async (e) => {
+  e.preventDefault();
+
+  try {
+    const lic = lerJsonLocalBackup("processosLicitatorios", []);
+    let tra = lerJsonLocalBackup("tramitesProcessos", []);
+    const irps = lerJsonLocalBackup("irpsRegistroPreco", []);
+    const fornecedores = lerJsonLocalBackup("fornecedoresCadastro", []);
+    const mapaSecretarias = lerJsonLocalBackup("mapaInteressadosSecretarias", {});
+    const tiposProtocolo = lerJsonLocalBackup("tiposProtocoloCadastro", []);
+    const assuntosProtocolo = lerJsonLocalBackup("assuntosProtocoloCadastro", []);
+    const anexosIndexedDB = await listarAnexosParaBackup();
+
+    tra.sort((a,b)=>{
+      const ea = Number(a.entrada||0);
+      const eb = Number(b.entrada||0);
+      if(ea !== eb) return ea - eb;
+
+      const da = new Date(a.dataEntrada||0);
+      const db = new Date(b.dataEntrada||0);
+      if(da - db !== 0) return da - db;
+
+      const oa = Number(a.ordemReal||0);
+      const ob = Number(b.ordemReal||0);
+      return oa - ob;
+    });
+
+    const backup = {
+      versaoBackup: 2,
+      criadoEm: new Date().toLocaleString("pt-BR"),
+      incluiAnexosIndexedDB: true,
+      licitatorios: lic,
+      tramites: tra,
+      irpsRegistroPreco: irps,
+      fornecedoresCadastro: fornecedores,
+      mapaInteressadosSecretarias: mapaSecretarias,
+      tiposProtocoloCadastro: tiposProtocolo,
+      assuntosProtocoloCadastro: assuntosProtocolo,
+      anexosIndexedDB
+    };
+
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: "application/json"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `backup_sistema_completo_${nomeDataBackup()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    alert(`Backup completo exportado com sucesso!\n\nProcessos: ${lic.length}\nTrâmites: ${tra.length}\nIRPs: ${irps.length}\nAnexos/PDFs: ${anexosIndexedDB.length}`);
+  } catch (error) {
+    console.error("Erro ao gerar backup completo:", error);
+    alert("Não foi possível gerar o backup completo. Verifique se o navegador permite acesso ao armazenamento local.");
+  }
+});
+// ----- RESTAURAÇÃO DE BACKUP -----
+
+const dlgRestore = document.getElementById("dlg_restore");
+const menuRestore = document.getElementById("menu-restore");
+const restoreInput = document.getElementById("restore_input");
+const restoreClose = document.getElementById("restore_close");
+const restoreResult = document.getElementById("restore_result");
+const btnMerge = document.getElementById("restore_merge");
+const btnReplace = document.getElementById("restore_replace");
+
+let restoreData = null;
+
+// abrir janela
+menuRestore.addEventListener("click", (e) => {
+  e.preventDefault();
+  restoreInput.value = "";
+  restoreResult.textContent = "Nenhum arquivo selecionado.";
+  restoreData = null;
+  dlgRestore.showModal();
+});
+
+// fechar
+restoreClose.addEventListener("click", () => dlgRestore.close());
+
+// leitura do arquivo
+restoreInput.addEventListener("change", () => {
+  const file = restoreInput.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try {
+      const json = JSON.parse(evt.target.result);
+
+      if (!Array.isArray(json.licitatorios) || !Array.isArray(json.tramites)) {
+        restoreResult.innerHTML = `<span style="color:red">Arquivo inválido. Estrutura incorreta.</span>`;
+        restoreData = null;
+        return;
+      }
+
+      restoreData = json;
+      const totalAnexos = Array.isArray(json.anexosIndexedDB) ? json.anexosIndexedDB.length : 0;
+      const avisoAnexos = Array.isArray(json.anexosIndexedDB)
+        ? `Anexos/PDFs: ${totalAnexos}`
+        : `Anexos/PDFs: backup antigo sem arquivos incorporados`;
+
+      restoreResult.innerHTML = `
+        <strong>Backup carregado!</strong><br>
+        Criado em: ${json.criadoEm}<br>
+        Processos Licitatórios: ${json.licitatorios.length}<br>
+        Trâmites: ${json.tramites.length}<br>
+        IRPs: ${(json.irpsRegistroPreco || []).length}<br>
+        ${avisoAnexos}
+      `;
+
+    } catch (e) {
+      restoreResult.innerHTML = `<span style="color:red">Erro ao ler arquivo.</span>`;
+      restoreData = null;
+    }
+  };
+
+  reader.readAsText(file);
+});
+
+// botão substituir tudo
+btnReplace.addEventListener("click", async () => {
+  if (!restoreData) return alert("Nenhum backup carregado.");
+
+  if (!confirm("Isso irá substituir TODOS os dados atuais. Continuar?"))
+    return;
+
+  try {
+    localStorage.setItem("processosLicitatorios", JSON.stringify(restoreData.licitatorios));
+    localStorage.setItem("tramitesProcessos", JSON.stringify(restoreData.tramites));
+    localStorage.setItem("irpsRegistroPreco", JSON.stringify(restoreData.irpsRegistroPreco || []));
+    localStorage.setItem("fornecedoresCadastro", JSON.stringify(restoreData.fornecedoresCadastro || []));
+    localStorage.setItem("mapaInteressadosSecretarias", JSON.stringify(restoreData.mapaInteressadosSecretarias || {}));
+    localStorage.setItem("tiposProtocoloCadastro", JSON.stringify(restoreData.tiposProtocoloCadastro || []));
+    localStorage.setItem("assuntosProtocoloCadastro", JSON.stringify(restoreData.assuntosProtocoloCadastro || []));
+
+    const anexosRestaurados = await restaurarAnexosDoBackup(
+      restoreData.anexosIndexedDB,
+      Array.isArray(restoreData.anexosIndexedDB)
+    );
+
+    alert(`Backup restaurado com sucesso!\n\nAnexos/PDFs restaurados: ${anexosRestaurados}`);
+    dlgRestore.close();
+  } catch (error) {
+    console.error("Erro ao restaurar backup:", error);
+    alert("Não foi possível restaurar o backup completo.");
+  }
+});
+
+// botão mesclar
+btnMerge.addEventListener("click", async () => {
+  if (!restoreData) return alert("Nenhum backup carregado.");
+
+  try {
+    // dados atuais
+    const licAtual = lerJsonLocalBackup("processosLicitatorios", []);
+    const traAtual = lerJsonLocalBackup("tramitesProcessos", []);
+    const irpAtual = lerJsonLocalBackup("irpsRegistroPreco", []);
+    const fornecedoresAtual = lerJsonLocalBackup("fornecedoresCadastro", []);
+    const mapaAtual = lerJsonLocalBackup("mapaInteressadosSecretarias", {});
+    const tiposAtual = lerJsonLocalBackup("tiposProtocoloCadastro", []);
+    const assuntosAtual = lerJsonLocalBackup("assuntosProtocoloCadastro", []);
+
+    // gravar
+    localStorage.setItem("processosLicitatorios", JSON.stringify(mesclarArrayBackup(licAtual, restoreData.licitatorios)));
+    localStorage.setItem("tramitesProcessos", JSON.stringify(mesclarArrayBackup(traAtual, restoreData.tramites)));
+    localStorage.setItem("irpsRegistroPreco", JSON.stringify(mesclarArrayBackup(irpAtual, restoreData.irpsRegistroPreco || [])));
+    localStorage.setItem("fornecedoresCadastro", JSON.stringify(mesclarArrayBackup(fornecedoresAtual, restoreData.fornecedoresCadastro || [])));
+    localStorage.setItem("tiposProtocoloCadastro", JSON.stringify(mesclarArrayBackup(tiposAtual, restoreData.tiposProtocoloCadastro || [])));
+    localStorage.setItem("assuntosProtocoloCadastro", JSON.stringify(mesclarArrayBackup(assuntosAtual, restoreData.assuntosProtocoloCadastro || [])));
+    localStorage.setItem("mapaInteressadosSecretarias", JSON.stringify({
+      ...mapaAtual,
+      ...(restoreData.mapaInteressadosSecretarias || {})
+    }));
+
+    const anexosRestaurados = await restaurarAnexosDoBackup(restoreData.anexosIndexedDB, false);
+
+    alert(`Backup mesclado com sucesso!\n\nAnexos/PDFs importados: ${anexosRestaurados}`);
+    dlgRestore.close();
+  } catch (error) {
+    console.error("Erro ao mesclar backup:", error);
+    alert("Não foi possível mesclar o backup completo.");
+  }
+});
+
+
+
+    function initMovimentacoes(container) {
+      container.innerHTML = `
+        <section class="wrap">
+          <header class="module-header">
+            <div>
+              <h2 style="margin:0 0 6px 0">Movimentações</h2>
+              <p class="muted" style="margin:0">Importe o relatório de movimentações e o TXT mesclado de etiquetas para cadastrar automaticamente processos ainda não existentes.</p>
+            </div>
+          </header>
+
+          <div class="card" style="margin-top:14px">
+            <div class="grid">
+              <div class="field">
+                <label>Relatório de movimentações TXT</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button id="mov_import_relatorio" class="btn" type="button">Importar relatório</button>
+                  <input id="mov_relatorio_file" type="file" accept=".txt,text/plain" style="display:none">
+                </div>
+                <div id="mov_relatorio_status" class="muted" style="font-size:12px;margin-top:6px">Nenhum relatório importado.</div>
+              </div>
+
+              <div class="field">
+                <label>TXT mesclado de etiquetas</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <button id="mov_import_etiquetas" class="btn" type="button">Importar etiquetas mescladas</button>
+                  <input id="mov_etiquetas_file" type="file" accept=".txt,text/plain" style="display:none">
+                </div>
+                <div id="mov_etiquetas_status" class="muted" style="font-size:12px;margin-top:6px">Nenhum TXT de etiquetas importado.</div>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px">
+              <button id="mov_limpar" class="btn" type="button">Limpar</button>
+              <button id="mov_processar" class="btn primary" type="button" disabled>Processar movimentações</button>
+            </div>
+          </div>
+
+          <div id="mov_resultado" class="card" style="margin-top:14px">
+            <div class="empty">Importe os dois arquivos para processar as movimentações.</div>
+          </div>
+        </section>
+      `;
+
+      const relatorioInput = container.querySelector('#mov_relatorio_file');
+      const etiquetasInput = container.querySelector('#mov_etiquetas_file');
+      const btnRelatorio = container.querySelector('#mov_import_relatorio');
+      const btnEtiquetas = container.querySelector('#mov_import_etiquetas');
+      const btnProcessar = container.querySelector('#mov_processar');
+      const btnLimpar = container.querySelector('#mov_limpar');
+      const statusRelatorio = container.querySelector('#mov_relatorio_status');
+      const statusEtiquetas = container.querySelector('#mov_etiquetas_status');
+      const resultado = container.querySelector('#mov_resultado');
+
+      let processosRelatorio = [];
+      let etiquetasMescladas = [];
+
+      function genIdLocal() {
+        return 'id_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+      }
+
+      function normalizarNumeroProcesso(valor) {
+        const match = String(valor || '').match(/0*(\d+)\s*\/\s*(\d{4})/);
+        return match ? `${match[1]}/${match[2]}` : '';
+      }
+
+      function extrairProcessosRelatorioMovimentacao(texto) {
+        const encontrados = new Map();
+        const regex = /\b0*(\d{3,})\s*\/\s*(\d{4})\b/g;
+        let match;
+        while ((match = regex.exec(String(texto || ''))) !== null) {
+          const numero = `${match[1]}/${match[2]}`;
+          encontrados.set(numero, { numero });
+        }
+        return Array.from(encontrados.values());
+      }
+
+      function extrairEtiquetasMovimentacao(texto) {
+        const resultado = [];
+        const blocos = String(texto || '').split('PROCESSO:');
+
+        blocos.forEach(bloco => {
+          bloco = bloco.trim();
+          if (!bloco) return;
+
+          const numeroMatch = bloco.match(/0*(\d+)\s*\/\s*(\d{4})/);
+          if (!numeroMatch) return;
+
+          const dataMatch = bloco.match(/DATA:\s*(\d{2}\/\d{2}\/\d{4})/i);
+          const nomeMatch = bloco.match(/NOME:\s*(.*?)(?=ASSUNTO:)/is);
+          const assuntoMatch = bloco.match(/ASSUNTO:\s*(.*?)(?=S[ÚU]MULA:)/is);
+          const sumulaMatch = bloco.match(/S[ÚU]MULA:\s*([\s\S]*)/is);
+
+          resultado.push({
+            numero: `${numeroMatch[1]}/${numeroMatch[2]}`.toUpperCase(),
+            dataCriacao: dataMatch ? dataMatch[1].toUpperCase() : '',
+            secretaria: nomeMatch ? nomeMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : '',
+            interessadoOriginal: nomeMatch ? nomeMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : '',
+            objeto: assuntoMatch ? assuntoMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : '',
+            descricaoCompleta: sumulaMatch ? sumulaMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : ''
+          });
+        });
+
+        return resultado;
+      }
+
+      function criarProcessoMovimentacao(etiqueta) {
+        return {
+          id: genIdLocal(),
+          numero: etiqueta.numero || '',
+          dataCriacao: etiqueta.dataCriacao || '',
+          objeto: etiqueta.objeto || '',
+          secretaria: etiqueta.secretaria || '',
+          interessadoOriginal: etiqueta.interessadoOriginal || etiqueta.secretaria || '',
+          descricaoCompleta: etiqueta.descricaoCompleta || '',
+          irp: '',
+          observacao: 'PROCESSO CRIADO A PARTIR DO RELATÓRIO DE MOVIMENTAÇÕES.',
+          volumes: '',
+          valorEstimado: null,
+          recurso: [],
+          modalidade: '',
+          situacao: '',
+          fase: '',
+          tipoProcesso: '',
+          credTipo: '',
+          credNumero: '',
+          credPrincipal: '',
+          credCnpj: '',
+          credRazao: '',
+          credFantasia: '',
+          credItens: [],
+          credItensContratacao: [],
+          publicacoes: [],
+          publicacaoPncpLink: '',
+          novo: true
+        };
+      }
+
+      function atualizarBotaoProcessar() {
+        btnProcessar.disabled = !processosRelatorio.length || !etiquetasMescladas.length;
+      }
+
+      function listaHtml(titulo, itens, classe = '') {
+        return `
+          <div class="card" style="box-shadow:none;margin-top:12px;padding:12px">
+            <strong>${titulo}</strong>
+            ${itens.length ? `
+              <div style="overflow:auto;margin-top:8px">
+                <table>
+                  <tbody>
+                    ${itens.map(item => `<tr><td>${item}</td></tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>
+            ` : `<div class="empty" style="margin-top:8px">Nenhum.</div>`}
+          </div>
+        `;
+      }
+
+      function renderResultadoInicial() {
+        resultado.innerHTML = '<div class="empty">Importe os dois arquivos para processar as movimentações.</div>';
+      }
+
+      btnRelatorio.onclick = () => relatorioInput.click();
+      btnEtiquetas.onclick = () => etiquetasInput.click();
+
+      relatorioInput.onchange = async () => {
+        const file = relatorioInput.files?.[0];
+        if (!file) return;
+        const texto = await file.text();
+        processosRelatorio = extrairProcessosRelatorioMovimentacao(texto);
+        statusRelatorio.textContent = processosRelatorio.length
+          ? `${processosRelatorio.length} processo(s) identificado(s) no relatório.`
+          : 'Nenhum processo identificado no relatório.';
+        atualizarBotaoProcessar();
+      };
+
+      etiquetasInput.onchange = async () => {
+        const file = etiquetasInput.files?.[0];
+        if (!file) return;
+        const texto = await file.text();
+        etiquetasMescladas = extrairEtiquetasMovimentacao(texto);
+        statusEtiquetas.textContent = etiquetasMescladas.length
+          ? `${etiquetasMescladas.length} etiqueta(s) identificada(s) no TXT mesclado.`
+          : 'Nenhuma etiqueta válida encontrada no TXT mesclado.';
+        atualizarBotaoProcessar();
+      };
+
+      btnLimpar.onclick = () => {
+        processosRelatorio = [];
+        etiquetasMescladas = [];
+        relatorioInput.value = '';
+        etiquetasInput.value = '';
+        statusRelatorio.textContent = 'Nenhum relatório importado.';
+        statusEtiquetas.textContent = 'Nenhum TXT de etiquetas importado.';
+        atualizarBotaoProcessar();
+        renderResultadoInicial();
+      };
+
+      btnProcessar.onclick = () => {
+        const processos = JSON.parse(localStorage.getItem('processosLicitatorios') || '[]');
+        const existentes = new Set(processos.map(p => normalizarNumeroProcesso(p.numero)).filter(Boolean));
+        const etiquetasPorNumero = new Map(etiquetasMescladas.map(etiqueta => [normalizarNumeroProcesso(etiqueta.numero), etiqueta]));
+
+        const criados = [];
+        const jaExistiam = [];
+        const semEtiqueta = [];
+        const novosProcessos = [...processos];
+
+        processosRelatorio.forEach(item => {
+          const numero = normalizarNumeroProcesso(item.numero);
+          if (!numero) return;
+
+          if (existentes.has(numero)) {
+            jaExistiam.push(numero);
+            return;
+          }
+
+          const etiqueta = etiquetasPorNumero.get(numero);
+          if (!etiqueta) {
+            semEtiqueta.push(numero);
+            return;
+          }
+
+          novosProcessos.unshift(criarProcessoMovimentacao(etiqueta));
+          existentes.add(numero);
+          criados.push(numero);
+        });
+
+        if (criados.length) {
+          localStorage.setItem('processosLicitatorios', JSON.stringify(novosProcessos));
+          if (window.reloadProcessosLicitatorios) window.reloadProcessosLicitatorios();
+        }
+
+        const dataHoraRelatorio = new Date().toLocaleString('pt-BR');
+        const linhasRelatorio = [
+          ...criados.map(numero => ({ situacao: 'CRIADO', numero, observacao: 'Processo criado a partir da etiqueta mesclada.' })),
+          ...jaExistiam.map(numero => ({ situacao: 'JÁ EXISTIA', numero, observacao: 'Processo já estava cadastrado no sistema.' })),
+          ...semEtiqueta.map(numero => ({ situacao: 'SEM ETIQUETA', numero, observacao: 'Mescle a etiqueta deste processo e processe novamente.' }))
+        ];
+
+        resultado.innerHTML = `
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap">
+            <div>
+              <h3 style="margin:0">Resultado da importação</h3>
+              <div class="muted" style="font-size:12px;margin-top:4px">Gerado em ${dataHoraRelatorio}</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button id="mov_resultado_imprimir" class="btn" type="button">Imprimir</button>
+              <button id="mov_resultado_xls" class="btn" type="button">Exportar XLS</button>
+            </div>
+          </div>
+          <div class="grid" style="margin-top:12px">
+            <div class="card" style="box-shadow:none;padding:12px"><strong>Criados</strong><div style="font-size:24px;font-weight:800;margin-top:6px;color:#16a34a">${criados.length}</div></div>
+            <div class="card" style="box-shadow:none;padding:12px"><strong>Já existiam</strong><div style="font-size:24px;font-weight:800;margin-top:6px;color:#2563eb">${jaExistiam.length}</div></div>
+            <div class="card" style="box-shadow:none;padding:12px"><strong>Sem etiqueta</strong><div style="font-size:24px;font-weight:800;margin-top:6px;color:#dc2626">${semEtiqueta.length}</div></div>
+          </div>
+          ${listaHtml('Processos criados', criados)}
+          ${listaHtml('Processos que já existiam', jaExistiam)}
+          ${listaHtml('Processos sem etiqueta no TXT mesclado', semEtiqueta)}
+          ${semEtiqueta.length ? '<div class="muted" style="margin-top:10px">Mescle as etiquetas desses processos e processe novamente o relatório.</div>' : ''}
+        `;
+
+        resultado.querySelector('#mov_resultado_imprimir').onclick = () => {
+          const win = window.open('', '', 'width=900,height=700');
+          win.document.write(`
+            <html>
+              <head>
+                <title>Resultado da importação</title>
+                <style>
+                  body{font-family:Arial,sans-serif;padding:24px;color:#0f172a}
+                  h2,h3{margin:0 0 10px}
+                  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+                  .card{border:1px solid #dbe3ef;border-radius:8px;padding:12px;margin-top:12px}
+                  table{width:100%;border-collapse:collapse;margin-top:8px}
+                  td,th{border:1px solid #dbe3ef;padding:7px;text-align:left}
+                  .muted{color:#64748b}
+                  button{display:none}
+                </style>
+              </head>
+              <body>
+                <h2>Resultado da importação</h2>
+                ${resultado.innerHTML}
+              </body>
+            </html>
+          `);
+          win.document.close();
+          win.focus();
+          win.print();
+        };
+
+        resultado.querySelector('#mov_resultado_xls').onclick = () => {
+          const nomeData = new Date().toLocaleString('pt-BR').replace(/\D/g, '').replace(/^(\d{2})(\d{2})(\d{4})(\d{2})(\d{2})(\d{2}).*$/, '$3$2$1_$4$5$6');
+          const rows = [
+            ['Situação', 'Nº Processo', 'Observação'],
+            ...linhasRelatorio.map(row => [row.situacao, row.numero, row.observacao])
+          ];
+
+          if (window.XLSX) {
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            XLSX.utils.book_append_sheet(wb, ws, 'Resultado');
+            XLSX.writeFile(wb, `resultado_importacao_${nomeData}.xlsx`);
+            return;
+          }
+
+          const csv = rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `resultado_importacao_${nomeData}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+      };
+
+      renderResultadoInicial();
+    }
+    function initMescladorEtiquetas(container) {
+      container.innerHTML = `
+        <section class="wrap">
+          <header class="module-header">
+            <div>
+              <h2 style="margin:0 0 6px 0">Mesclador de Etiquetas</h2>
+              <p class="muted" style="margin:0">Importe uma ou mais etiquetas TXT e gere um único TXT consolidado.</p>
+            </div>
+          </header>
+
+          <div class="card" style="margin-top:14px">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <button id="mesc_etq_importar" class="btn primary" type="button">Importar etiquetas TXT</button>
+              <button id="mesc_etq_limpar" class="btn" type="button">Limpar</button>
+              <button id="mesc_etq_baixar" class="btn" type="button" disabled>Exportar TXT Único</button>
+              <input id="mesc_etq_input" type="file" accept=".txt,text/plain" multiple style="display:none">
+            </div>
+            <div id="mesc_etq_status" class="muted" style="font-size:13px;margin-top:10px">Nenhuma etiqueta importada.</div>
+          </div>
+
+          <div class="card" style="margin-top:14px">
+            <h3 style="margin-top:0">Etiquetas encontradas</h3>
+            <div id="mesc_etq_preview" class="empty">Importe um ou mais arquivos TXT para visualizar as etiquetas.</div>
+          </div>
+
+          <div class="card" style="margin-top:14px">
+            <h3 style="margin-top:0">TXT mesclado</h3>
+            <textarea id="mesc_etq_output" class="input" rows="14" readonly placeholder="O TXT consolidado aparecerá aqui."></textarea>
+          </div>
+        </section>
+      `;
+
+      const input = container.querySelector('#mesc_etq_input');
+      const btnImportar = container.querySelector('#mesc_etq_importar');
+      const btnLimpar = container.querySelector('#mesc_etq_limpar');
+      const btnBaixar = container.querySelector('#mesc_etq_baixar');
+      const status = container.querySelector('#mesc_etq_status');
+      const preview = container.querySelector('#mesc_etq_preview');
+      const output = container.querySelector('#mesc_etq_output');
+      let etiquetas = [];
+      let txtFinal = '';
+
+      function extrairEtiquetasMesclador(texto) {
+        const resultado = [];
+        const blocos = String(texto || '').split('PROCESSO:');
+
+        blocos.forEach(bloco => {
+          bloco = bloco.trim();
+          if (!bloco) return;
+
+          const numeroMatch = bloco.match(/0*(\d+)\s*\/\s*(\d{4})/);
+          if (!numeroMatch) return;
+
+          const dataMatch = bloco.match(/DATA:\s*(\d{2}\/\d{2}\/\d{4})/i);
+          const nomeMatch = bloco.match(/NOME:\s*(.*?)(?=ASSUNTO:)/is);
+          const assuntoMatch = bloco.match(/ASSUNTO:\s*(.*?)(?=S[ÚU]MULA:)/is);
+          const sumulaMatch = bloco.match(/S[ÚU]MULA:\s*([\s\S]*)/is);
+
+          resultado.push({
+            numero: `${numeroMatch[1]}/${numeroMatch[2]}`.toUpperCase(),
+            dataCriacao: dataMatch ? dataMatch[1].toUpperCase() : '',
+            interessado: nomeMatch ? nomeMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : '',
+            assunto: assuntoMatch ? assuntoMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : '',
+            sumula: sumulaMatch ? sumulaMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : ''
+          });
+        });
+
+        return resultado;
+      }
+
+      function normalizarNumeroEtiquetaMesclador(valor) {
+        const match = String(valor || '').match(/0*(\d+)\s*\/\s*(\d{4})/);
+        return match ? `${match[1]}/${match[2]}` : '';
+      }
+
+      function mesclarEtiquetasSemDuplicidade(listaAtual, novas) {
+        const mapa = new Map();
+        let duplicadas = 0;
+
+        [...listaAtual, ...novas].forEach(etiqueta => {
+          const numero = normalizarNumeroEtiquetaMesclador(etiqueta.numero);
+          if (!numero) return;
+          if (mapa.has(numero)) {
+            duplicadas++;
+            return;
+          }
+          mapa.set(numero, { ...etiqueta, numero });
+        });
+
+        return { etiquetas: Array.from(mapa.values()), duplicadas };
+      }
+      function montarTxtEtiquetas(lista) {
+        return lista.map(etiqueta => [
+          `PROCESSO: ${etiqueta.numero || ''}`,
+          `DATA: ${etiqueta.dataCriacao || ''}`,
+          `NOME: ${etiqueta.interessado || ''}`,
+          `ASSUNTO: ${etiqueta.assunto || ''}`,
+          `SÚMULA: ${etiqueta.sumula || ''}`
+        ].join('\r\n')).join('\r\n\r\n');
+      }
+
+      function renderizar() {
+        txtFinal = montarTxtEtiquetas(etiquetas);
+        output.value = txtFinal;
+        btnBaixar.disabled = !etiquetas.length;
+        status.textContent = etiquetas.length
+          ? `${etiquetas.length} etiqueta(s) importada(s) e mesclada(s).`
+          : 'Nenhuma etiqueta importada.';
+
+        if (!etiquetas.length) {
+          preview.innerHTML = '<div class="empty">Importe um ou mais arquivos TXT para visualizar as etiquetas.</div>';
+          return;
+        }
+
+        preview.innerHTML = `
+          <div style="overflow:auto">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Processo</th><th>Data</th><th>Interessado</th><th>Assunto</th></tr>
+              </thead>
+              <tbody>
+                ${etiquetas.map((etiqueta, idx) => `
+                  <tr>
+                    <td>${idx + 1}</td>
+                    <td><strong>${etiqueta.numero || ''}</strong></td>
+                    <td>${etiqueta.dataCriacao || ''}</td>
+                    <td>${etiqueta.interessado || ''}</td>
+                    <td>${etiqueta.assunto || ''}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      btnImportar.onclick = () => input.click();
+      btnLimpar.onclick = () => {
+        etiquetas = [];
+        input.value = '';
+        renderizar();
+      };
+      btnBaixar.onclick = () => {
+        if (!txtFinal) return;
+        const blob = new Blob([txtFinal], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const agora = new Date();
+        const dataHora = agora.toLocaleString('pt-BR')
+          .replace(/\D/g, '')
+          .replace(/^(\d{2})(\d{2})(\d{4})(\d{2})(\d{2})(\d{2}).*$/, '$3$2$1_$4$5$6');
+        a.download = `etiquetas_mescladas_${dataHora}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+      input.onchange = async () => {
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+
+        const novas = [];
+        for (const file of files) {
+          const texto = await file.text();
+          novas.push(...extrairEtiquetasMesclador(texto));
+        }
+
+        if (!novas.length) {
+          alert('Nenhuma etiqueta válida foi encontrada nos arquivos selecionados.');
+          return;
+        }
+
+        const mescla = mesclarEtiquetasSemDuplicidade(etiquetas, novas);
+        etiquetas = mescla.etiquetas;
+        renderizar();
+        if (mescla.duplicadas) {
+          status.textContent += ` ${mescla.duplicadas} etiqueta(s) duplicada(s) ignorada(s).`;
+        }
+      };
+
+      renderizar();
+    }
+    function loadModule(moduleFn) {
+      content.innerHTML = '';
+      moduleFn(content);
+    }
+
+    menuLicit.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initLicitatorios);
+    });
+
+
+    menuMovimentacoes.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initMovimentacoes);
+    });
+    menuTramitesGeral.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initTramitesGeral);
+    });
+
+    menuTramitesInterno.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initTramitesInterno);
+    });
+
+    menuCatCredenciamento.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initCategoriaCredenciamento);
+    });
+
+    menuCatContratacoesPregoes.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initCategoriaContratacoesPregoes);
+    });
+
+    menuCatContratacoesConcorrencias.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initCategoriaContratacoesConcorrencias);
+    });
+
+    menuCatContratacoesDispensas.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initCategoriaContratacoesDispensas);
+    });
+
+    menuCatContratacoesInexigibilidades.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initCategoriaContratacoesInexigibilidades);
+    });
+
+    menuCatRpIrp.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initCategoriaRegistroPrecoIrp);
+    });
+
+    menuCatRpAdesoes.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initCategoriaRegistroPrecoAdesoes);
+    });
+
+    menuCatRpAtas.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initCategoriaRegistroPrecoAtas);
+    });
+
+
+    menuMescladorEtiquetas.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initMescladorEtiquetas);
+    });
+    menuConversorItens.addEventListener("click", (e) => {
+      e.preventDefault();
+      loadModule(initConversorItensEdital);
+    });
+
+    // Abrir/fechar submenu
+    document.querySelectorAll(".menu-toggle").forEach(btn => {
+      btn.addEventListener("click", e => {
+        e.currentTarget.nextElementSibling.classList.toggle("open");
+      });
+    });
+  
+ 
+        
+  </script>
+  <script src="js/chart.min.js"></script>
+  <script src="js/xlsx.full.min.js"></script>
+  <script src="js/relatorios.js"></script>
+  
+  <script src="js/impressao.js"></script>
+
+
+
+
+<link rel="stylesheet" href="css/dashboard_chart.css">
+<script src="js/chart.min.js"></script>
+<script src="js/dashboard_chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+
+
+
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,173 @@
+/* Dashboard Chart.js — Tema PowerBI Dark */
+
+.pb-dark {
+  --bg:#0b1020;
+  --card:#0f1724;
+  --muted:rgba(255,255,255,0.60);
+  --accent:#60a5fa;
+
+  background: linear-gradient(180deg,#080914,#0b1020);
+  color:#e6eef8;
+  padding:18px;
+  font-family: Inter, sans-serif;
+}
+
+/* Header */
+.pb-header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:14px;
+}
+.pb-header h2 {
+  margin:0;
+  font-size:22px;
+}
+.pb-actions .btn {
+  margin-left:8px;
+}
+
+/* Cards */
+.pb-cards {
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:16px;
+}
+.pb-card {
+  background:rgba(255,255,255,0.03);
+  border-radius:14px;
+  padding:14px;
+  min-width:160px;
+  box-shadow:0 4px 14px rgba(0,0,0,0.5);
+}
+.pb-card.large { flex:1; }
+.pb-card-title { font-size:12px; color:var(--muted); }
+.pb-card-value { font-size:26px; font-weight:700; }
+
+/* Chart cards */
+.pb-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(350px,1fr));
+  gap:16px;
+  margin-top:6px;
+}
+.pb-chart-card {
+  background:var(--card);
+  border-radius:16px;
+  padding:14px;
+  box-shadow:0 4px 18px rgba(0,0,0,0.45);
+}
+.pb-chart-card h3 {
+  margin:0 0 8px 0;
+  font-size:16px;
+}
+.chart-container {
+  width:100%;
+  height:260px;
+  position:relative;
+}
+
+/* Donut */
+.donut-center {
+  position:absolute;
+  top:50%;
+  left:50%;
+  transform:translate(-50%, -50%);
+  font-size:20px;
+  font-weight:700;
+  color:#fff;
+  pointer-events:none;
+}
+
+@media print {
+  .pb-actions { display:none; }
+  body { background:#fff; }
+}
+
+/* ====== ABAS DO DASHBOARD ====== */
+.pb-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.pb-tab {
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.08);
+  color: #e6eef8;
+  font-size: 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: 0.2s ease;
+}
+
+.pb-tab.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: bold;
+}
+
+.pb-tab:hover {
+  background: rgba(255,255,255,0.18);
+}
+
+
+/* ===== GRÁFICOS EM LINHA COMPLETA ===== */
+.pb-chart-card.full {
+    width: 100%;
+    flex: 0 0 100%;
+    margin-bottom: 32px;
+}
+
+/* ===== CORRIGE GRID PARA EMPILHAR ===== */
+.pb-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;    /* espaçamento entre gráficos */
+}
+
+/* ===== AJUSTA ESPAÇAMENTO DOS CONTAINERS ===== */
+.pb-chart-card .chart-container {
+    width: 100%;
+    height: 320px;   /* define altura confortável */
+}
+
+/* ===== AJUSTA LABELS ===== */
+canvas {
+    max-width: 100% !important;
+}
+
+/* ===== OVERRIDE PARA GRÁFICOS FULL-WIDTH ===== */
+
+.pb-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 32px !important;
+    width: 100% !important;
+}
+
+/* Cada card ocupa 100% da largura */
+.pb-chart-card.full,
+.pb-chart-card {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* Altura maior para não esmagar */
+.pb-chart-card .chart-container {
+    width: 100% !important;
+    height: 340px !important;
+}
+
+/* Ajusta canvas para não encavalar */
+canvas {
+    max-width: 100% !important;
+}
+
+/* Deixa os títulos com mais espaço */
+.pb-chart-card h3 {
+    margin-bottom: 14px !important;
+}

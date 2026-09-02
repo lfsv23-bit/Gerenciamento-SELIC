@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Migracao Supabase - Controle de Processos</title>
+  <link rel="stylesheet" href="css/style.css?v=3.0-inicial-20260902">
+  <style>
+    body { background:#f1f5f9; }
+    .migration-page { max-width:880px; margin:40px auto; padding:0 18px; }
+    .migration-card { background:#fff; border:1px solid #dbe3ef; border-radius:12px; padding:22px; box-shadow:0 16px 38px rgba(15,23,42,.08); }
+    .migration-steps { display:grid; gap:10px; margin:18px 0; }
+    .migration-steps div { padding:12px 14px; border:1px solid #dbe3ef; border-radius:10px; background:#f8fafc; }
+    .migration-status { margin-top:14px; padding:12px 14px; border-radius:10px; border:1px solid #dbe3ef; color:#334155; background:#f8fafc; }
+    .migration-status.success { color:#166534; background:#ecfdf5; border-color:#bbf7d0; }
+    .migration-status.error { color:#991b1b; background:#fef2f2; border-color:#fecaca; }
+  </style>
+</head>
+<body>
+  <main class="migration-page">
+    <section class="migration-card">
+      <h1 style="margin:0 0 8px">Migracao para Supabase</h1>
+      <p class="muted" style="margin:0">
+        Esta pagina envia uma copia dos dados locais deste navegador para o banco online.
+        Ela nao apaga localStorage nem IndexedDB.
+      </p>
+
+      <div class="migration-steps">
+        <div><strong>1.</strong> Execute <code>supabase/schema.sql</code> no Supabase.</div>
+        <div><strong>2.</strong> Preencha <code>js/supabase-config.js</code> com URL e anon key.</div>
+        <div><strong>3.</strong> Abra esta pagina no mesmo navegador onde os dados locais estao salvos.</div>
+      </div>
+
+      <button id="migration_start" class="btn primary" type="button">Enviar dados locais para o Supabase</button>
+      <div id="migration_status" class="migration-status">Aguardando inicio da migracao.</div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabase-config.js"></script>
+  <script src="js/database.js"></script>
+  <script src="js/migracao-supabase.js"></script>
+</body>
+</html>
