@@ -6,40 +6,93 @@
   <title>Migracao Supabase - Controle de Processos</title>
   <link rel="stylesheet" href="css/style.css?v=3.0-inicial-20260902">
   <style>
-    body { background:#f1f5f9; }
-    .migration-page { max-width:880px; margin:40px auto; padding:0 18px; }
-    .migration-card { background:#fff; border:1px solid #dbe3ef; border-radius:12px; padding:22px; box-shadow:0 16px 38px rgba(15,23,42,.08); }
-    .migration-steps { display:grid; gap:10px; margin:18px 0; }
-    .migration-steps div { padding:12px 14px; border:1px solid #dbe3ef; border-radius:10px; background:#f8fafc; }
+    body { background:#f1f5f9; color:#0f172a; }
+    .migration-page { max-width:1120px; margin:34px auto; padding:0 18px 48px; }
+    .migration-card { background:#fff; border:1px solid #dbe3ef; border-radius:14px; padding:24px; box-shadow:0 18px 42px rgba(15,23,42,.08); }
+    .migration-head { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; border-bottom:1px solid #e2e8f0; padding-bottom:18px; margin-bottom:20px; }
+    .migration-head h1 { margin:0 0 6px; font-size:24px; }
+    .migration-panel { border:1px solid #dbe3ef; border-radius:12px; padding:16px; background:#f8fafc; margin-top:14px; }
+    .migration-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:14px; }
+    .migration-file { width:100%; max-width:620px; padding:12px; border:1px solid #dbe3ef; border-radius:10px; background:#fff; }
+    .summary-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:14px; }
+    .summary-tile { border:1px solid #dbe3ef; border-radius:10px; background:#fff; padding:12px; }
+    .summary-tile strong { display:block; font-size:22px; margin-top:4px; }
+    .progress-wrap { width:100%; height:12px; border-radius:999px; background:#e2e8f0; overflow:hidden; margin:14px 0 4px; }
+    .progress-bar { height:100%; width:0%; background:#2563eb; transition:width .2s ease; }
+    .entity-list { display:grid; gap:8px; margin-top:14px; }
+    .entity-row { display:grid; grid-template-columns:1fr auto auto; gap:12px; align-items:center; border:1px solid #e2e8f0; border-radius:10px; background:#fff; padding:10px 12px; }
+    .entity-row .muted { font-size:12px; }
+    .badge-ok { color:#166534; background:#dcfce7; border:1px solid #bbf7d0; padding:4px 8px; border-radius:999px; font-weight:700; }
+    .badge-warn { color:#854d0e; background:#fef9c3; border:1px solid #fde68a; padding:4px 8px; border-radius:999px; font-weight:700; }
+    .badge-error { color:#991b1b; background:#fee2e2; border:1px solid #fecaca; padding:4px 8px; border-radius:999px; font-weight:700; }
+    .migration-log { margin-top:14px; max-height:260px; overflow:auto; border:1px solid #dbe3ef; border-radius:10px; background:#0f172a; color:#dbeafe; padding:12px; font:12px/1.45 Consolas, monospace; white-space:pre-wrap; }
     .migration-status { margin-top:14px; padding:12px 14px; border-radius:10px; border:1px solid #dbe3ef; color:#334155; background:#f8fafc; }
     .migration-status.success { color:#166534; background:#ecfdf5; border-color:#bbf7d0; }
     .migration-status.error { color:#991b1b; background:#fef2f2; border-color:#fecaca; }
+    .migration-status.warning { color:#854d0e; background:#fefce8; border-color:#fde68a; }
+    .mapping-table { width:100%; border-collapse:collapse; margin-top:12px; font-size:13px; }
+    .mapping-table th, .mapping-table td { border-bottom:1px solid #e2e8f0; padding:8px; text-align:left; vertical-align:top; }
+    .mapping-table th { color:#334155; background:#f1f5f9; }
   </style>
 </head>
 <body>
   <main class="migration-page">
     <section class="migration-card">
-      <h1 style="margin:0 0 8px">Migracao para Supabase</h1>
-      <p class="muted" style="margin:0">
-        Esta pagina envia uma copia dos dados locais deste navegador para o banco online.
-        Ela nao apaga localStorage nem IndexedDB e exige login pelo Supabase Auth.
-      </p>
-
-      <div class="migration-steps">
-        <div><strong>1.</strong> Execute <code>supabase/schema.sql</code> no Supabase.</div>
-        <div><strong>2.</strong> Preencha <code>js/supabase-config.js</code> com Project URL e Publishable Key.</div>
-        <div><strong>3.</strong> Abra esta pagina no mesmo navegador onde os dados locais estao salvos.</div>
+      <div class="migration-head">
+        <div>
+          <h1>Migracao para Supabase</h1>
+          <p class="muted" style="margin:0">Importe o backup JSON completo do sistema antigo para as tabelas relacionais do Supabase.</p>
+        </div>
+        <a class="btn" href="index.html">Voltar ao sistema</a>
       </div>
 
-      <button id="migration_start" class="btn primary" type="button">Enviar dados locais para o Supabase</button>
-      <div id="migration_status" class="migration-status">Aguardando inicio da migracao.</div>
+      <div class="migration-panel">
+        <h2 style="margin:0 0 8px; font-size:17px">Backup</h2>
+        <input id="migration_file" class="migration-file" type="file" accept="application/json,.json">
+        <div class="migration-actions">
+          <button id="migration_analyze" class="btn" type="button" disabled>Analisar backup</button>
+          <button id="migration_simulate" class="btn" type="button" disabled>Simular importação</button>
+          <button id="migration_import" class="btn primary" type="button" disabled>Importar para Supabase</button>
+          <button id="migration_report" class="btn" type="button" disabled>Baixar relatório</button>
+        </div>
+        <div id="migration_status" class="migration-status">Selecione o arquivo JSON do backup completo.</div>
+      </div>
+
+      <div id="migration_summary" class="migration-panel" hidden></div>
+
+      <div id="migration_progress_panel" class="migration-panel" hidden>
+        <h2 style="margin:0 0 8px; font-size:17px">Importação</h2>
+        <div class="progress-wrap"><div id="migration_progress" class="progress-bar"></div></div>
+        <div id="migration_progress_text" class="muted">0%</div>
+        <div id="migration_entities" class="entity-list"></div>
+      </div>
+
+      <div class="migration-panel">
+        <h2 style="margin:0 0 8px; font-size:17px">Mapeamento</h2>
+        <table class="mapping-table">
+          <thead><tr><th>Tabela</th><th>Origem no backup</th><th>Observação</th></tr></thead>
+          <tbody>
+            <tr><td>processos</td><td>licitatorios</td><td>Campos principais do processo; sobras ficam em extra.</td></tr>
+            <tr><td>processo_blocos</td><td>licitatorios</td><td>Fases e blocos internos: ETP, TR, edital, licitação, resultado, homologação e outros.</td></tr>
+            <tr><td>processo_itens</td><td>itensProcesso, cotItens, resultadoItens</td><td>Itens do processo, cotação e resultado.</td></tr>
+            <tr><td>processo_publicacoes</td><td>publicacoes</td><td>Publicações vinculadas ao processo.</td></tr>
+            <tr><td>fornecedores / fornecedor_pessoas</td><td>fornecedoresCadastro e fornecedores encontrados em atas</td><td>ID antigo fica em local_id; vínculos usam UUID.</td></tr>
+            <tr><td>atas, itens, publicações, aditivos</td><td>atasRegistroPreco</td><td>Dados das atas são distribuídos nas tabelas próprias.</td></tr>
+            <tr><td>tramites_internos / tramites_gerais</td><td>tramites e tramitesGeraisImportados</td><td>Trâmites internos em lista; trâmites gerais agrupados por processo.</td></tr>
+            <tr><td>app_settings</td><td>mapaInteressadosSecretarias</td><td>Configurações auxiliares.</td></tr>
+            <tr><td>anexos</td><td>anexosIndexedDB e referências dos registros</td><td>Metadados vão para a tabela; arquivo vai para Storage quando houver dataUrl.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="migration_log" class="migration-log">Aguardando leitura do backup...</div>
     </section>
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/supabase-config.js"></script>
   <script src="js/auth.js"></script>
-  <script src="js/database.js?v=3.0-tabelas-restantes-supabase-20260903"></script>
-  <script src="js/migracao-supabase.js?v=3.0-tabelas-restantes-supabase-20260903"></script>
+  <script src="js/database.js?v=3.0-importador-backup-json-20260903"></script>
+  <script src="js/migracao-supabase.js?v=3.0-importador-backup-json-20260903"></script>
 </body>
 </html>

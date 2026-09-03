@@ -102,16 +102,33 @@ where schemaname = 'public'
   and roles::text ilike '%anon%';
 ```
 
-## Migrar os dados locais
+## Storage de anexos
+
+O `schema.sql` tambem cria o bucket privado `processos-anexos` no Supabase Storage e policies para que somente usuarios autenticados possam ler, enviar, atualizar e excluir arquivos desse bucket.
+
+Se o trecho de Storage nao executar por permissao no SQL Editor, crie manualmente no painel do Supabase:
+
+1. Va em `Storage`.
+2. Crie um bucket chamado `processos-anexos`.
+3. Deixe o bucket como privado.
+4. Mantenha as policies do `schema.sql` para acesso apenas da role `authenticated`.
+
+## Migrar backup JSON completo
 
 1. Abra `login.html`.
 2. Entre com um usuario criado manualmente no Supabase.
-3. Abra `migracao-supabase.html` no mesmo navegador onde os dados atuais estao salvos.
-4. Clique em `Enviar dados locais para o Supabase`.
-5. Aguarde a mensagem de conclusao.
-6. Confira as tabelas no Supabase em `Table Editor`.
+3. Abra `migracao-supabase.html`.
+4. Selecione o arquivo JSON gerado pelo backup completo do sistema antigo.
+5. Clique em `Analisar backup`.
+6. Clique em `Simular importação`.
+7. Confira o resumo e os avisos.
+8. Clique em `Importar para Supabase` somente depois da simulacao.
+9. Ao final, clique em `Baixar relatório`.
+10. Confira as tabelas no Supabase em `Table Editor`.
 
-Os dados locais continuam no navegador. Nada e apagado.
+A importacao e idempotente: os dados usam `local_id`, numero do processo, CNPJ e chaves equivalentes para atualizar registros existentes sem duplicar. Registros ja existentes nao sao excluidos automaticamente.
+
+O arquivo JSON escolhido nunca e alterado. O `localStorage` e o IndexedDB locais tambem nao sao apagados.
 
 ## Publicar no GitHub Pages
 
@@ -136,11 +153,11 @@ Com o Supabase configurado e o usuario autenticado, as telas principais passam a
 
 O `localStorage` continua existindo apenas como origem de migracao, backup temporario e fallback quando o Supabase nao estiver configurado. Depois que o Supabase estiver configurado, novos cadastros, edicoes e exclusoes devem ser conferidos nas tabelas do banco.
 
-Os PDFs/anexos fisicos ainda permanecem no IndexedDB do navegador. O Supabase recebe os metadados na tabela `anexos`, mas a migracao dos arquivos para Supabase Storage ficara para uma etapa propria.
+Ao importar um backup que possua `anexosIndexedDB` com `dataUrl`, os PDFs/anexos sao enviados para o bucket privado `processos-anexos`. A tabela `anexos` recebe somente metadados e o caminho do arquivo no Storage, sem gravar Base64 no PostgreSQL.
 
 ## Proximas etapas tecnicas
 
 1. Testar a migracao em uma copia do projeto Supabase.
 2. Validar processos, fornecedores, atas, aditivos, IRPs e tramites importados.
-3. Migrar PDFs/anexos do IndexedDB para Supabase Storage.
+3. Conferir o relatorio baixado pela pagina de migracao.
 4. Manter o backup JSON como copia de seguranca.

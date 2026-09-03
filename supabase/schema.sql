@@ -363,6 +363,38 @@ end $$;
 
 grant usage on schema public to authenticated;
 
+-- Bucket privado para os PDFs/anexos migrados do backup completo.
+-- Execute este trecho no Supabase antes de importar backups com anexos.
+insert into storage.buckets (id, name, public)
+values ('processos-anexos', 'processos-anexos', false)
+on conflict (id) do update set
+  name = excluded.name,
+  public = false;
+
+grant select, insert, update, delete on table storage.objects to authenticated;
+
+drop policy if exists "authenticated_select_processos_anexos" on storage.objects;
+drop policy if exists "authenticated_insert_processos_anexos" on storage.objects;
+drop policy if exists "authenticated_update_processos_anexos" on storage.objects;
+drop policy if exists "authenticated_delete_processos_anexos" on storage.objects;
+
+create policy "authenticated_select_processos_anexos"
+on storage.objects for select to authenticated
+using (bucket_id = 'processos-anexos');
+
+create policy "authenticated_insert_processos_anexos"
+on storage.objects for insert to authenticated
+with check (bucket_id = 'processos-anexos');
+
+create policy "authenticated_update_processos_anexos"
+on storage.objects for update to authenticated
+using (bucket_id = 'processos-anexos')
+with check (bucket_id = 'processos-anexos');
+
+create policy "authenticated_delete_processos_anexos"
+on storage.objects for delete to authenticated
+using (bucket_id = 'processos-anexos');
+
 insert into public.secretarias (sigla) values
   ('AMHARC'), ('AGETRAT'), ('FUPHAN'), ('FMAP'), ('FUNPREV'), ('SISP'), ('SEMED'), ('SEPRAD'),
   ('SMSPDS'), ('PROCON'), ('FCC'), ('FUNEC'), ('FUNDTUR'), ('SMASC'), ('SMDES'), ('SEGES'),

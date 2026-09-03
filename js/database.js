@@ -572,13 +572,20 @@
     if (!arquivo || typeof arquivo !== "object") return null;
     const local = arquivo.id || arquivo.local_id || arquivo.localId || `${origem}_${arquivo.nome || arquivo.name || ""}_${arquivo.tamanho || arquivo.size || ""}`;
     if (!String(local || "").trim() && !arquivo.nome && !arquivo.name) return null;
+    const anexoLocalId = localId("anexo", local);
+    const existente = await client
+      .from("anexos")
+      .select("id, storage_bucket, storage_path")
+      .eq("local_id", anexoLocalId)
+      .maybeSingle();
+    if (existente.error) throw existente.error;
     const payload = {
-      local_id: localId("anexo", local),
+      local_id: anexoLocalId,
       nome: arquivo.nome || arquivo.name || "",
       tipo: arquivo.tipo || arquivo.type || "",
       tamanho: arquivo.tamanho || arquivo.size || null,
-      storage_bucket: arquivo.storageBucket || arquivo.storage_bucket || "",
-      storage_path: arquivo.storagePath || arquivo.storage_path || arquivo.id || "",
+      storage_bucket: arquivo.storageBucket || arquivo.storage_bucket || existente.data?.storage_bucket || "",
+      storage_path: arquivo.storagePath || arquivo.storage_path || existente.data?.storage_path || arquivo.id || "",
       origem,
       extra: arquivo
     };
@@ -591,6 +598,85 @@
     console.log("[SUPABASE][anexos][UPSERT_RESULT]", { data, error });
     if (error) throw error;
     return data?.id || null;
+  }
+
+  function dataUrlToBlob(dataUrl, fallbackType = "application/octet-stream") {
+    const [header, body] = String(dataUrl || "").split(",");
+    if (!body) return null;
+    const tipo = header.match(/data:([^;]+)/)?.[1] || fallbackType;
+    const bin = atob(body);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: tipo });
+  }
+
+  function safeStorageName(value) {
+    return String(value || "anexo")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\w.\-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 140) || "anexo";
+  }
+
+  async function importarAnexoBackup(anexo, options = {}) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const bucket = options.bucket || "processos-anexos";
+    const origem = options.origem || "backup_json";
+    const local = anexo?.id || anexo?.local_id || anexo?.localId;
+    if (!local) throw new Error("Anexo sem ID local no backup.");
+
+    const anexoLocalId = localId("anexo", local);
+    const nome = anexo.nome || anexo.name || `${anexoLocalId}.pdf`;
+    const tipo = anexo.tipo || anexo.type || "application/octet-stream";
+    let storagePath = anexo.storagePath || anexo.storage_path || "";
+
+    if (anexo.dataUrl) {
+      const blob = dataUrlToBlob(anexo.dataUrl, tipo);
+      if (!blob) throw new Error(`Nao foi possivel converter o anexo ${anexoLocalId}.`);
+      storagePath = storagePath || `backup/${anexoLocalId}/${safeStorageName(nome)}`;
+      console.log("[MIGRAÇÃO][anexos][STORAGE_UPLOAD]", { bucket, storagePath, nome, tipo });
+      const upload = await client.storage
+        .from(bucket)
+        .upload(storagePath, blob, { contentType: tipo, upsert: true });
+      console.log("[MIGRAÇÃO][anexos][STORAGE_RESULT]", { data: upload.data, error: upload.error });
+      if (upload.error) throw upload.error;
+    }
+
+    const extra = { ...(anexo || {}) };
+    delete extra.dataUrl;
+
+    const payload = {
+      local_id: anexoLocalId,
+      nome,
+      tipo,
+      tamanho: anexo.tamanho || anexo.size || null,
+      storage_bucket: storagePath ? bucket : (anexo.storageBucket || anexo.storage_bucket || ""),
+      storage_path: storagePath || "",
+      origem,
+      extra
+    };
+    console.log("[MIGRAÇÃO][anexos][UPSERT]", { payload });
+    const { data, error } = await client
+      .from("anexos")
+      .upsert(payload, { onConflict: "local_id" })
+      .select("*")
+      .single();
+    console.log("[MIGRAÇÃO][anexos][UPSERT_RESULT]", { data, error });
+    if (error) throw error;
+    return data;
+  }
+
+  async function contarRegistros(tabela) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const { count, error } = await client
+      .from(tabela)
+      .select("*", { count: "exact", head: true });
+    if (error) throw error;
+    return count || 0;
   }
 
   function anexoFromRow(row) {
@@ -1539,6 +1625,8 @@
     listarTramitesGerais,
     listarTramitesInternos,
     salvarTramitesInternos,
+    importarAnexoBackup,
+    contarRegistros,
     obterAppSetting,
     salvarAppSetting,
     loadProcessosResumo,
