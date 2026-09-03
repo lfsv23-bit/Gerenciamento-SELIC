@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Controle de Processos</title>
   <link rel="stylesheet" href="css/style.css?v=3.0-login-logout-footer-20260902">
+  <style>
+    @keyframes moduleSpin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
   <div class="app">
@@ -980,11 +985,38 @@ btnMerge.addEventListener("click", async () => {
 
       renderizar();
     }
+    let moduleLoadToken = 0;
+
+    function renderModuleLoading() {
+      content.innerHTML = `
+        <section class="wrap">
+          <div class="card" style="display:flex;align-items:center;gap:14px;min-height:96px">
+            <div aria-hidden="true" style="
+              width:26px;
+              height:26px;
+              border:3px solid #dbeafe;
+              border-top-color:#2563eb;
+              border-radius:50%;
+              animation:moduleSpin .8s linear infinite;
+              flex:0 0 auto;
+            "></div>
+            <div>
+              <h2 style="margin:0 0 4px">Carregando</h2>
+              <p class="muted" style="margin:0">Aguarde enquanto os dados são buscados.</p>
+            </div>
+          </div>
+        </section>
+      `;
+    }
+
     async function loadModule(moduleFn) {
-      content.innerHTML = '';
+      const token = ++moduleLoadToken;
+      renderModuleLoading();
       try {
         await moduleFn(content);
+        if (token !== moduleLoadToken) return;
       } catch (error) {
+        if (token !== moduleLoadToken) return;
         console.error('Erro ao carregar módulo:', error);
         content.innerHTML = `
           <section class="wrap">
