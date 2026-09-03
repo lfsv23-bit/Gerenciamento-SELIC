@@ -1,5 +1,5 @@
 // js/licitatorios.js
-// Módulo Processos Licitatórios — Cadastro + Edição detalhada (localStorage + Importar/Exportar JSON)
+// Módulo Processos Licitatórios — Cadastro + Edição detalhada (Supabase + backup local para migração)
 
 (() => {
   const STORAGE_KEY = 'processosLicitatorios';
@@ -39,14 +39,24 @@
   ];
 
   /* ---------- Storage helpers ---------- */
-  function loadData() {
-    if (window.__processosLicitatoriosFonteSupabase && Array.isArray(window.__processosLicitatoriosData)) {
-      return window.__processosLicitatoriosData;
-    }
+  function loadLocalDataForMigration() {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
     catch (e) { console.error('Erro ao carregar dados:', e); return []; }
   }
-  function saveData(items) {
+
+  function loadData() {
+    if (window.isSupabaseConfigured?.()) {
+      return Array.isArray(window.__processosLicitatoriosData) ? window.__processosLicitatoriosData : [];
+    }
+    return loadLocalDataForMigration();
+  }
+
+  function saveData(items, options = {}) {
+    if (window.isSupabaseConfigured?.() && !options.localOnly) {
+      console.warn('[Processos] saveData(...) ignorado em modo Supabase. Use AppDatabase para persistir processos.', items);
+      window.__processosLicitatoriosData = Array.isArray(items) ? items : [];
+      return;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }
 
@@ -660,6 +670,34 @@
     setTimeout(() => el.remove(), ttl);
   }
 
+  function supabaseProcessosAtivo() {
+    return !!(window.AppDatabase && window.isSupabaseConfigured?.());
+  }
+
+  function erroPersistenciaProcessoVisivel(acao, error) {
+    console.error(`Erro ao ${acao} processo no Supabase:`, error);
+    showToast(`Erro ao ${acao} processo no Supabase. Veja o console.`);
+    alert(`Não foi possível ${acao} o processo no Supabase.\n\nDetalhe: ${error?.message || error}`);
+  }
+
+  async function persistirProcessoEmBancoOuBackup(processo, listaProcessos) {
+    if (!supabaseProcessosAtivo()) {
+      saveData(listaProcessos, { localOnly: true });
+      return processo;
+    }
+
+    const salvo = await window.AppDatabase.saveProcessoCompleto(processo);
+    if (!salvo?.id) {
+      throw new Error('O Supabase não retornou confirmação do processo salvo.');
+    }
+
+    const idx = listaProcessos.findIndex(item => item.id === processo.id || item.id === salvo.id);
+    if (idx >= 0) listaProcessos[idx] = salvo;
+    window.__processosLicitatoriosFonteSupabase = true;
+    window.__processosLicitatoriosData = listaProcessos;
+    return salvo;
+  }
+
   /* ---------- Download helper ---------- */
   function downloadFile(filename, data) {
     const blob = new Blob([data], { type: 'application/json' });
@@ -913,7 +951,7 @@
     let houveMudancaProcessos = false;
     let houveMudancaIrps = false;
 
-    const processos = loadData();
+    const processos = loadLocalDataForMigration();
     for (const processo of processos) {
       for (const publicacao of (Array.isArray(processo.publicacoes) ? processo.publicacoes : [])) {
         const meios = publicacao.meios || {};
@@ -957,7 +995,7 @@
       if (pdfCiAbertura !== irp.pdfCiAbertura) { irp.pdfCiAbertura = pdfCiAbertura; houveMudancaIrps = true; }
     }
 
-    if (houveMudancaProcessos) saveData(processos);
+    if (houveMudancaProcessos) saveData(processos, { localOnly: true });
     if (houveMudancaIrps) localStorage.setItem(IRP_STORAGE_KEY, JSON.stringify(irps));
     if (houveMudancaProcessos || houveMudancaIrps) {
       showToast('Anexos antigos migrados para IndexedDB.');
@@ -3834,6 +3872,7 @@ maximumFractionDigits:2
         return;
       }
       try {
+        await window.AppDatabase.requireAuthenticatedUser?.();
         const processos = await window.AppDatabase.loadProcessosCompletos();
         data = Array.isArray(processos) ? processos : [];
         window.__processosLicitatoriosFonteSupabase = true;
@@ -3852,11 +3891,17 @@ maximumFractionDigits:2
       if (!supabaseProcessosDisponivel()) {
         if (idx >= 0) data[idx] = item; else data.unshift(item);
         window.__processosLicitatoriosData = data;
-        saveData(data);
+        saveData(data, { localOnly: true });
         return item;
       }
 
-      const salvo = await window.AppDatabase.saveProcessoCompleto(item);
+      let salvo;
+      try {
+        salvo = await window.AppDatabase.saveProcessoCompleto(item);
+      } catch (error) {
+        erroSupabaseVisivel('salvar', error);
+        throw error;
+      }
       if (!salvo?.id) {
         throw new Error('O Supabase não retornou confirmação do processo salvo.');
       }
@@ -3870,11 +3915,16 @@ maximumFractionDigits:2
       if (!supabaseProcessosDisponivel()) {
         data = data.filter(d => d.id != id);
         window.__processosLicitatoriosData = data;
-        saveData(data);
+        saveData(data, { localOnly: true });
         return true;
       }
 
-      await window.AppDatabase.deleteProcessoCompleto(id);
+      try {
+        await window.AppDatabase.deleteProcessoCompleto(id);
+      } catch (error) {
+        erroSupabaseVisivel('excluir', error);
+        throw error;
+      }
       data = data.filter(d => d.id != id);
       window.__processosLicitatoriosFonteSupabase = true;
       window.__processosLicitatoriosData = data;
@@ -3886,11 +3936,16 @@ maximumFractionDigits:2
       if (!supabaseProcessosDisponivel()) {
         data = data.filter(item => !ids.has(item.id));
         window.__processosLicitatoriosData = data;
-        saveData(data);
+        saveData(data, { localOnly: true });
         return lista.length;
       }
 
-      await window.AppDatabase.deleteProcessosCompletos(lista);
+      try {
+        await window.AppDatabase.deleteProcessosCompletos(lista);
+      } catch (error) {
+        erroSupabaseVisivel('excluir', error);
+        throw error;
+      }
       data = data.filter(item => !ids.has(item.id));
       window.__processosLicitatoriosFonteSupabase = true;
       window.__processosLicitatoriosData = data;
@@ -4522,7 +4577,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
             await salvarProcessoPrincipal(processo, idx);
           }
         } else {
-          saveData(data);
+          saveData(data, { localOnly: true });
         }
         window.__processosLicitatoriosData = data;
         renderTable();
@@ -4698,7 +4753,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
         } else {
           data = [...novos.reverse(), ...data];
           window.__processosLicitatoriosData = data;
-          saveData(data);
+          saveData(data, { localOnly: true });
         }
       } catch (error) {
         erroSupabaseVisivel('importar', error);
@@ -4891,7 +4946,7 @@ if (supabaseProcessosDisponivel()) {
 } else {
   data = importadosMesclados;
   window.__processosLicitatoriosData = data;
-  saveData(data);
+  saveData(data, { localOnly: true });
   renderTable();
   showToast('Importação concluída.');
 }
@@ -9113,20 +9168,31 @@ atualizarEtapasConcluidas();
       }
     }
 
-    function sincronizarProcessoGeradorDaIrp(irp) {
+    async function sincronizarProcessoGeradorDaIrp(irp) {
       const processos = loadData();
       let mudou = false;
+      const alterados = [];
       processos.forEach(processo => {
         if (processo.irpRegistroPreco === irp.id && processo.id !== irp.processoGerador) {
           processo.irpRegistroPreco = '';
           mudou = true;
+          alterados.push(processo);
         }
         if (irp.processoGerador && processo.id === irp.processoGerador && processo.irpRegistroPreco !== irp.id) {
           processo.irpRegistroPreco = irp.id;
           mudou = true;
+          alterados.push(processo);
         }
       });
-      if (mudou) saveData(processos);
+      if (mudou) {
+        if (supabaseProcessosAtivo()) {
+          for (const processo of alterados) {
+            await persistirProcessoEmBancoOuBackup(processo, processos);
+          }
+        } else {
+          saveData(processos, { localOnly: true });
+        }
+      }
     }
 
     function renderItensDraft() {
@@ -9244,7 +9310,7 @@ atualizarEtapasConcluidas();
 
       if (idx >= 0) irps[idx] = item;
       else irps.unshift(item);
-      sincronizarProcessoGeradorDaIrp(item);
+      await sincronizarProcessoGeradorDaIrp(item);
       try {
         saveIrps(irps);
       } catch (error) {
@@ -9265,7 +9331,7 @@ atualizarEtapasConcluidas();
         else irps[0] = item;
 
         try {
-          sincronizarProcessoGeradorDaIrp(item);
+          await sincronizarProcessoGeradorDaIrp(item);
           saveIrps(irps);
         } catch (fallbackError) {
           console.error('Erro ao salvar IRP sem anexos:', fallbackError);
@@ -10385,7 +10451,7 @@ atualizarEtapasConcluidas();
     });
 
     container.querySelectorAll('[data-cat-delete-ata]').forEach(btn => {
-      btn.onclick = () => {
+      btn.onclick = async () => {
         const processoId = btn.dataset.catProcesso || '';
         const ataId = btn.dataset.catDeleteAta || '';
         const ataIndexFallback = Number(btn.dataset.catDeleteAtaIndex || -1);
@@ -10405,7 +10471,12 @@ atualizarEtapasConcluidas();
         atas.splice(ataIndex, 1);
         processo.atasRegistroPreco = atas;
         processosAtualizados[processoIndex] = processo;
-        saveData(processosAtualizados);
+        try {
+          await persistirProcessoEmBancoOuBackup(processo, processosAtualizados);
+        } catch (error) {
+          erroPersistenciaProcessoVisivel('excluir ata do', error);
+          return;
+        }
         showToast('Ata excluída com sucesso.');
         initCategoriaRegistroPrecoAtas(container);
       };
@@ -10672,7 +10743,12 @@ atualizarEtapasConcluidas();
       if (ataIndex >= 0) processo.atasRegistroPreco[ataIndex] = ata;
       else processo.atasRegistroPreco.push(ata);
       processosAtualizados[processoIndex] = processo;
-      saveData(processosAtualizados);
+      try {
+        await persistirProcessoEmBancoOuBackup(processo, processosAtualizados);
+      } catch (error) {
+        erroPersistenciaProcessoVisivel('salvar ata do', error);
+        return;
+      }
       catAtaEditProcessoId = '';
       catAtaEditAtaId = '';
       catAtaEditAtaIndex = -1;
@@ -11038,3 +11114,5 @@ atualizarEtapasConcluidas();
   window.initConversorItensAta = initConversorItensAta;
   window.initFornecedores = initFornecedores;
 })();
+
+

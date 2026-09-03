@@ -21,6 +21,19 @@
     return window.__supabaseClient;
   }
 
+  async function requireAuthenticatedUser() {
+    const client = requireClient();
+    const { data, error } = await client.auth.getUser();
+    if (error) {
+      console.error("[Supabase Auth] Erro ao confirmar usuario autenticado:", error);
+      throw error;
+    }
+    if (!data?.user?.id) {
+      throw new Error("Usuario autenticado nao encontrado. Faca login antes de gravar processos.");
+    }
+    return data.user;
+  }
+
   function onlyDigits(value) {
     return String(value || "").replace(/\D/g, "");
   }
@@ -155,12 +168,25 @@
 
   async function saveProcessoCompleto(processo) {
     const client = requireClient();
+    const user = await requireAuthenticatedUser();
     const core = processoCore(processo);
+
+    console.log("[Supabase processos] antes do INSERT/UPDATE em public.processos", {
+      userId: user.id,
+      payload: core
+    });
+
     const { data: procSaved, error } = await client
       .from("processos")
       .upsert(core, { onConflict: "local_id" })
       .select("id")
       .single();
+
+    console.log("[Supabase processos] depois do INSERT/UPDATE em public.processos", {
+      data: procSaved,
+      error
+    });
+
     if (error) throw error;
 
     const processoId = procSaved.id;
@@ -375,6 +401,7 @@
 
   async function deleteProcessoCompleto(localId) {
     const client = requireClient();
+    await requireAuthenticatedUser();
     const alvo = await client
       .from("processos")
       .select("id, local_id, numero")
@@ -410,6 +437,7 @@
 
   window.AppDatabase = {
     client: requireClient,
+    requireAuthenticatedUser,
     parseDateBR,
     parseNumber,
     upsertFornecedor,
