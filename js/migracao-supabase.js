@@ -17,25 +17,17 @@
 
   async function migrarFornecedores(db, fornecedores) {
     for (const fornecedor of fornecedores) {
-      const fornecedorId = await db.upsertFornecedor(db.client(), fornecedor);
-      const pessoas = Array.isArray(fornecedor.pessoas) ? fornecedor.pessoas : [];
-      if (!fornecedorId || !pessoas.length) continue;
-      const rows = pessoas.map(pessoa => ({
-        fornecedor_id: fornecedorId,
-        local_id: pessoa.id || null,
-        nome: pessoa.nome || "",
-        cpf: pessoa.cpf || "",
-        tipo: pessoa.tipo || "",
-        situacao: pessoa.situacao || "",
-        observacao: pessoa.observacao || "",
-        extra: pessoa
-      })).filter(row => row.nome);
-      if (!rows.length) continue;
-      const client = db.client();
-      const del = await client.from("fornecedor_pessoas").delete().eq("fornecedor_id", fornecedorId);
-      if (del.error) throw del.error;
-      const ins = await client.from("fornecedor_pessoas").insert(rows);
-      if (ins.error) throw ins.error;
+      await db.salvarFornecedor(fornecedor);
+    }
+  }
+
+  async function migrarSecretarias(db) {
+    const secretarias = [
+      "AMHARC","AGETRAT","FUPHAN","FMAP","FUNPREV","SISP","SEMED","SEPRAD","SMSPDS",
+      "PROCON","FCC","FUNEC","FUNDTUR","SMASC","SMDES","SEGES","SMS","SELIC"
+    ];
+    for (const sigla of secretarias) {
+      await db.salvarSecretaria({ sigla, ativo: true });
     }
   }
 
@@ -117,6 +109,9 @@
 
     setStatus("Migrando configuracoes...", "info");
     await migrarListasConfiguracao(client, tipos, assuntos, mapaSecretarias);
+
+    setStatus("Migrando secretarias...", "info");
+    await migrarSecretarias(db);
 
     setStatus("Migrando fornecedores...", "info");
     await migrarFornecedores(db, fornecedores);

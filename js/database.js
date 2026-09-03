@@ -72,6 +72,13 @@
     return match ? `${match[3]}/${match[2]}/${match[1]}` : raw;
   }
 
+  function formatDateTimeBR(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value || "");
+    return date.toLocaleString("pt-BR");
+  }
+
   function localId(prefix, fallback = "") {
     return String(fallback || `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
   }
@@ -139,21 +146,265 @@
     return out;
   }
 
+  function fornecedorPayload(fornecedor) {
+    const cnpj = fornecedor?.cnpj || fornecedor?.fornecedorCnpj || fornecedor?.credCnpj || "";
+    const local = fornecedor?.id || fornecedor?.fornecedorId || onlyDigits(cnpj);
+    return {
+      local_id: localId("forn", local),
+      cnpj: cnpj || null,
+      razao_social: fornecedor?.razaoSocial || fornecedor?.razao || fornecedor?.fornecedorRazao || fornecedor?.credRazao || "",
+      nome_fantasia: fornecedor?.nomeFantasia || fornecedor?.fantasia || fornecedor?.fornecedorFantasia || fornecedor?.credFantasia || "",
+      origem: fornecedor?.origem || "",
+      extra: fornecedor || {}
+    };
+  }
+
+  function pessoaFornecedorPayload(fornecedorId, pessoa) {
+    return {
+      fornecedor_id: fornecedorId,
+      local_id: pessoa?.id || pessoa?.local_id || localId("pessoa"),
+      nome: pessoa?.nome || "",
+      cpf: pessoa?.cpf || "",
+      tipo: pessoa?.tipoVinculo || pessoa?.tipo || pessoa?.tipo_vinculo || "",
+      situacao: pessoa?.ativo === false ? "INATIVO" : (pessoa?.situacao || "ATIVO"),
+      observacao: pessoa?.observacao || "",
+      extra: pessoa || {}
+    };
+  }
+
+  function pessoaFornecedorFromRow(row) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    const situacao = row.situacao || extra.situacao || "";
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      supabaseId: row.id,
+      nome: row.nome || extra.nome || "",
+      cpf: row.cpf || extra.cpf || "",
+      tipoVinculo: row.tipo || extra.tipoVinculo || extra.tipo || "",
+      observacao: row.observacao || extra.observacao || "",
+      ativo: situacao ? normalizarTexto(situacao) !== "INATIVO" : extra.ativo !== false,
+      criadoEm: extra.criadoEm || formatDateTimeBR(row.created_at),
+      atualizadoEm: extra.atualizadoEm || formatDateTimeBR(row.updated_at)
+    };
+  }
+
+  function normalizarTexto(value) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toUpperCase();
+  }
+
+  function fornecedorFromRow(row, pessoasRelacionadas) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    const pessoas = Array.isArray(pessoasRelacionadas) && pessoasRelacionadas.length
+      ? pessoasRelacionadas
+      : (Array.isArray(row?.fornecedor_pessoas) && row.fornecedor_pessoas.length ? row.fornecedor_pessoas.map(pessoaFornecedorFromRow) : (Array.isArray(extra.pessoas) ? extra.pessoas : []));
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      supabaseId: row.id,
+      cnpj: row.cnpj || extra.cnpj || "",
+      razaoSocial: row.razao_social || extra.razaoSocial || extra.razao || "",
+      nomeFantasia: row.nome_fantasia || extra.nomeFantasia || extra.fantasia || "",
+      origem: row.origem || extra.origem || "",
+      criadoEm: extra.criadoEm || formatDateTimeBR(row.created_at),
+      atualizadoEm: extra.atualizadoEm || formatDateTimeBR(row.updated_at),
+      pessoas
+    };
+  }
+
+  function logSupabaseFornecedor(operacao, detalhes) {
+    console.log(`[SUPABASE][fornecedores][${operacao}]`, detalhes);
+  }
+
+  function secretariaFromRow(row) {
+    return {
+      id: row.id,
+      sigla: row.sigla || "",
+      nome: row.nome || "",
+      ativo: row.ativo !== false,
+      criadoEm: formatDateTimeBR(row.created_at),
+      atualizadoEm: formatDateTimeBR(row.updated_at)
+    };
+  }
+
+  function logSupabaseSecretaria(operacao, detalhes) {
+    console.log(`[SUPABASE][secretarias][${operacao}]`, detalhes);
+  }
+
+  async function listarSecretarias() {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    logSupabaseSecretaria("SELECT", { tabela: "secretarias" });
+    const { data, error } = await client
+      .from("secretarias")
+      .select("*")
+      .eq("ativo", true)
+      .order("sigla", { ascending: true });
+    logSupabaseSecretaria("SELECT_RESULT", { data, error });
+    if (error) throw error;
+    return (data || []).map(secretariaFromRow);
+  }
+
+  async function salvarSecretaria(secretaria) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const payload = {
+      sigla: String(secretaria?.sigla || "").trim().toUpperCase(),
+      nome: secretaria?.nome || null,
+      ativo: secretaria?.ativo !== false
+    };
+    if (!payload.sigla) throw new Error("Informe a sigla da secretaria.");
+    logSupabaseSecretaria("UPSERT", { tabela: "secretarias", payload });
+    const { data, error } = await client
+      .from("secretarias")
+      .upsert(payload, { onConflict: "sigla" })
+      .select("*")
+      .single();
+    logSupabaseSecretaria("UPSERT_RESULT", { data, error });
+    if (error) throw error;
+    return secretariaFromRow(data);
+  }
+
+  async function excluirSecretaria(sigla) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const payload = { sigla: String(sigla || "").trim().toUpperCase(), ativo: false };
+    if (!payload.sigla) throw new Error("Informe a sigla da secretaria.");
+    logSupabaseSecretaria("DELETE", { tabela: "secretarias", payload });
+    const { data, error } = await client
+      .from("secretarias")
+      .update({ ativo: false })
+      .eq("sigla", payload.sigla)
+      .select("*")
+      .single();
+    logSupabaseSecretaria("DELETE_RESULT", { data, error });
+    if (error) throw error;
+    return secretariaFromRow(data);
+  }
+
+  async function listarFornecedores() {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    logSupabaseFornecedor("SELECT", { tabela: "fornecedores" });
+    const { data, error } = await client
+      .from("fornecedores")
+      .select("*")
+      .order("razao_social", { ascending: true });
+    logSupabaseFornecedor("SELECT_RESULT", { data, error });
+    if (error) throw error;
+    const fornecedores = data || [];
+    const pessoasPorFornecedor = await listarPessoasPorFornecedorIds(client, fornecedores.map(f => f.id));
+    return fornecedores.map(row => fornecedorFromRow(row, pessoasPorFornecedor.get(row.id) || []));
+  }
+
+  async function listarPessoasPorFornecedorIds(client, fornecedorIds) {
+    const ids = Array.from(new Set(fornecedorIds || [])).filter(Boolean);
+    const mapa = new Map();
+    if (!ids.length) return mapa;
+    console.log("[SUPABASE][fornecedor_pessoas][SELECT]", { tabela: "fornecedor_pessoas", fornecedorIds: ids });
+    const { data, error } = await client
+      .from("fornecedor_pessoas")
+      .select("*")
+      .in("fornecedor_id", ids)
+      .order("nome", { ascending: true });
+    console.log("[SUPABASE][fornecedor_pessoas][SELECT_RESULT]", { data, error });
+    if (error) throw error;
+    (data || []).forEach(row => {
+      const lista = mapa.get(row.fornecedor_id) || [];
+      lista.push(pessoaFornecedorFromRow(row));
+      mapa.set(row.fornecedor_id, lista);
+    });
+    return mapa;
+  }
+
+  async function substituirPessoasFornecedor(client, fornecedorId, pessoas) {
+    const normalizadas = Array.isArray(pessoas) ? pessoas : [];
+    console.log("[SUPABASE][fornecedor_pessoas][DELETE]", { tabela: "fornecedor_pessoas", fornecedorId });
+    const del = await client.from("fornecedor_pessoas").delete().eq("fornecedor_id", fornecedorId);
+    console.log("[SUPABASE][fornecedor_pessoas][DELETE_RESULT]", { data: del.data, error: del.error });
+    if (del.error) throw del.error;
+
+    const rows = normalizadas
+      .map(pessoa => pessoaFornecedorPayload(fornecedorId, pessoa))
+      .filter(row => row.nome);
+    if (!rows.length) return [];
+
+    console.log("[SUPABASE][fornecedor_pessoas][INSERT]", { tabela: "fornecedor_pessoas", payload: rows });
+    const { data, error } = await client
+      .from("fornecedor_pessoas")
+      .insert(rows)
+      .select("*");
+    console.log("[SUPABASE][fornecedor_pessoas][INSERT_RESULT]", { data, error });
+    if (error) throw error;
+    return (data || []).map(pessoaFornecedorFromRow);
+  }
+
+  async function listarPessoasFornecedor(fornecedorLocalId) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const alvo = await client
+      .from("fornecedores")
+      .select("id")
+      .eq("local_id", fornecedorLocalId)
+      .single();
+    if (alvo.error) throw alvo.error;
+    const mapa = await listarPessoasPorFornecedorIds(client, [alvo.data.id]);
+    return mapa.get(alvo.data.id) || [];
+  }
+
+  async function salvarFornecedor(fornecedor) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const payload = fornecedorPayload(fornecedor);
+    const conflict = payload.cnpj ? "cnpj" : "local_id";
+    logSupabaseFornecedor("UPSERT", { tabela: "fornecedores", payload, conflict });
+    const { data, error } = await client
+      .from("fornecedores")
+      .upsert(payload, { onConflict: conflict })
+      .select("*")
+      .single();
+    logSupabaseFornecedor("UPSERT_RESULT", { data, error });
+    if (error) throw error;
+    const pessoas = await substituirPessoasFornecedor(client, data.id, fornecedor?.pessoas || []);
+    return fornecedorFromRow(data, pessoas);
+  }
+
+  async function excluirFornecedor(localIdFornecedor) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    logSupabaseFornecedor("DELETE", { tabela: "fornecedores", localId: localIdFornecedor });
+    const { data, error } = await client
+      .from("fornecedores")
+      .delete()
+      .eq("local_id", localIdFornecedor)
+      .select("id, local_id")
+      .single();
+    logSupabaseFornecedor("DELETE_RESULT", { data, error });
+    if (error) throw error;
+
+    const check = await client
+      .from("fornecedores")
+      .select("id")
+      .eq("local_id", localIdFornecedor)
+      .maybeSingle();
+    if (check.error) throw check.error;
+    if (check.data) throw new Error("Nao foi possivel confirmar a exclusao do fornecedor no Supabase.");
+    return true;
+  }
+
   async function upsertFornecedor(client, fornecedor) {
     if (!fornecedor) return null;
     const cnpj = fornecedor.cnpj || fornecedor.fornecedorCnpj || fornecedor.credCnpj || "";
-    const local = fornecedor.id || fornecedor.fornecedorId || onlyDigits(cnpj);
     if (!cnpj && !fornecedor.razaoSocial && !fornecedor.razao && !fornecedor.fornecedorRazao) return null;
-    const payload = {
-      local_id: local || null,
-      cnpj: cnpj || null,
-      razao_social: fornecedor.razaoSocial || fornecedor.razao || fornecedor.fornecedorRazao || fornecedor.credRazao || "",
-      nome_fantasia: fornecedor.nomeFantasia || fornecedor.fantasia || fornecedor.fornecedorFantasia || fornecedor.credFantasia || "",
-      origem: fornecedor.origem || "",
-      extra: fornecedor
-    };
+    const payload = fornecedorPayload(fornecedor);
     const conflict = payload.cnpj ? "cnpj" : "local_id";
+    logSupabaseFornecedor("UPSERT", { tabela: "fornecedores", payload, conflict });
     const { data, error } = await client.from("fornecedores").upsert(payload, { onConflict: conflict }).select("id").single();
+    logSupabaseFornecedor("UPSERT_RESULT", { data, error });
     if (error) throw error;
     return data?.id || null;
   }
@@ -440,6 +691,13 @@
     requireAuthenticatedUser,
     parseDateBR,
     parseNumber,
+    listarSecretarias,
+    salvarSecretaria,
+    excluirSecretaria,
+    listarFornecedores,
+    listarPessoasFornecedor,
+    salvarFornecedor,
+    excluirFornecedor,
     upsertFornecedor,
     saveProcessoCompleto,
     deleteProcessoCompleto,

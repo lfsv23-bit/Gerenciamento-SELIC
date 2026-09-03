@@ -1333,15 +1333,26 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
     });
   }
 
-  function initTramitesGeral(container) {
+  async function initTramitesGeral(container) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido para initTramitesGeral');
 
     const TRAMITES_GERAIS_KEY = 'tramitesGeraisImportados';
-    const secretarias = [
+    const secretariasPadrao = [
       "AMHARC", "AGETRAT", "FUPHAN", "FMAP", "FUNPREV", "SISP", "SEMED", "SEPRAD", "SMSPDS",
       "PROCON", "FCC", "FUNEC", "FUNDTUR", "SMASC", "SMDES", "SEGES", "SMS", "SELIC"
     ];
+    let secretarias = secretariasPadrao.slice();
+
+    if (window.AppDatabase?.listarSecretarias && window.isSupabaseConfigured?.()) {
+      try {
+        const rows = await window.AppDatabase.listarSecretarias();
+        const siglas = rows.map(item => String(item.sigla || '').trim().toUpperCase()).filter(Boolean);
+        if (siglas.length) secretarias = siglas;
+      } catch (error) {
+        console.error('[SUPABASE][secretarias][SELECT][ERRO]', error);
+      }
+    }
 
     const esc = (value) => String(value || "")
       .replace(/&/g, "&amp;")

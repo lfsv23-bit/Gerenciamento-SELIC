@@ -33,10 +33,11 @@
     ]
   };
 
-  const SECRETARIAS = [
+  const SECRETARIAS_PADRAO = [
     "AMHARC","AGETRAT","FUPHAN","FMAP","FUNPREV","SISP","SEMED","SEPRAD","SMSPDS",
     "PROCON","FCC","FUNEC","FUNDTUR","SMASC","SMDES","SEGES","SMS","SELIC"
   ];
+  let SECRETARIAS = SECRETARIAS_PADRAO.slice();
 
   /* ---------- Storage helpers ---------- */
   function loadLocalDataForMigration() {
@@ -69,12 +70,24 @@
     localStorage.setItem(SECRETARIA_MAP_KEY, JSON.stringify(map));
   }
 
-  function loadFornecedores() {
+  function loadFornecedoresLocalForMigration() {
     try { return JSON.parse(localStorage.getItem(FORNECEDORES_KEY) || '[]'); }
     catch (e) { console.error('Erro ao carregar fornecedores:', e); return []; }
   }
 
-  function saveFornecedores(items) {
+  function loadFornecedores() {
+    if (window.isSupabaseConfigured?.()) {
+      return Array.isArray(window.__fornecedoresData) ? window.__fornecedoresData : [];
+    }
+    return loadFornecedoresLocalForMigration();
+  }
+
+  function saveFornecedores(items, options = {}) {
+    if (window.isSupabaseConfigured?.() && !options.localOnly) {
+      console.warn('[Fornecedores] saveFornecedores(...) ignorado em modo Supabase. Use AppDatabase para persistir fornecedores.', items);
+      window.__fornecedoresData = Array.isArray(items) ? items : [];
+      return;
+    }
     localStorage.setItem(FORNECEDORES_KEY, JSON.stringify(items));
   }
 
@@ -253,7 +266,21 @@
     if (idx >= 0) fornecedores[idx] = fornecedor;
     else fornecedores.unshift(fornecedor);
 
-    saveFornecedores(fornecedores);
+    if (supabaseFornecedoresAtivo()) {
+      window.__fornecedoresFonteSupabase = true;
+      window.__fornecedoresData = fornecedores;
+      window.AppDatabase.salvarFornecedor(fornecedor)
+        .then(salvo => {
+          const cache = loadFornecedores();
+          const salvoIdx = cache.findIndex(f => f.id === salvo.id || onlyDigits(f.cnpj) === onlyDigits(salvo.cnpj));
+          if (salvoIdx >= 0) cache[salvoIdx] = salvo;
+          else cache.unshift(salvo);
+          window.__fornecedoresData = cache;
+        })
+        .catch(error => erroFornecedorSupabaseVisivel("UPSERT", fornecedor, error));
+    } else {
+      saveFornecedores(fornecedores, { localOnly: true });
+    }
     return fornecedor;
   }
 
@@ -680,6 +707,105 @@
     alert(`Não foi possível ${acao} o processo no Supabase.\n\nDetalhe: ${error?.message || error}`);
   }
 
+  function supabaseFornecedoresAtivo() {
+    return !!(window.AppDatabase?.listarFornecedores && window.AppDatabase?.salvarFornecedor && window.isSupabaseConfigured?.());
+  }
+
+  function supabaseSecretariasAtivo() {
+    return !!(window.AppDatabase?.listarSecretarias && window.isSupabaseConfigured?.());
+  }
+
+  function erroSecretariasSupabaseVisivel(operacao, payload, error) {
+    console.error(`[SUPABASE][secretarias][${operacao}][ERRO]`, {
+      tabela: "secretarias",
+      payload,
+      mensagem: error?.message || String(error || ""),
+      detalhes: error
+    });
+    showToast(`Erro ao ${operacao.toLowerCase()} secretarias no Supabase. Veja o console.`);
+    alert(`Não foi possível ${operacao.toLowerCase()} as secretarias no Supabase.\n\nDetalhe: ${error?.message || error}`);
+  }
+
+  async function carregarSecretariasSupabase(options = {}) {
+    if (!supabaseSecretariasAtivo()) return SECRETARIAS;
+    try {
+      const rows = await window.AppDatabase.listarSecretarias();
+      const siglas = rows.map(item => String(item.sigla || "").trim().toUpperCase()).filter(Boolean);
+      SECRETARIAS = siglas.length ? siglas : SECRETARIAS_PADRAO.slice();
+      window.__secretariasFonteSupabase = true;
+      window.__secretariasData = rows;
+      return SECRETARIAS;
+    } catch (error) {
+      if (!options.silencioso) erroSecretariasSupabaseVisivel("SELECT", null, error);
+      throw error;
+    }
+  }
+
+  function erroFornecedorSupabaseVisivel(operacao, payload, error) {
+    console.error(`[SUPABASE][fornecedores][${operacao}][ERRO]`, {
+      tabela: "fornecedores",
+      payload,
+      mensagem: error?.message || String(error || ""),
+      detalhes: error
+    });
+    showToast(`Erro ao ${operacao.toLowerCase()} fornecedor no Supabase. Veja o console.`);
+    alert(`Não foi possível ${operacao.toLowerCase()} o fornecedor no Supabase.\n\nDetalhe: ${error?.message || error}`);
+  }
+
+  async function carregarFornecedoresSupabase(options = {}) {
+    if (!supabaseFornecedoresAtivo()) return loadFornecedores();
+    try {
+      const fornecedores = await window.AppDatabase.listarFornecedores();
+      window.__fornecedoresFonteSupabase = true;
+      window.__fornecedoresData = Array.isArray(fornecedores) ? fornecedores : [];
+      return window.__fornecedoresData;
+    } catch (error) {
+      if (!options.silencioso) erroFornecedorSupabaseVisivel("SELECT", null, error);
+      throw error;
+    }
+  }
+
+  async function salvarFornecedorPrincipal(fornecedor) {
+    if (!supabaseFornecedoresAtivo()) {
+      const fornecedores = loadFornecedores();
+      const idx = fornecedores.findIndex(f => f.id === fornecedor.id || onlyDigits(f.cnpj) === onlyDigits(fornecedor.cnpj));
+      if (idx >= 0) fornecedores[idx] = fornecedor; else fornecedores.unshift(fornecedor);
+      saveFornecedores(fornecedores, { localOnly: true });
+      return fornecedor;
+    }
+
+    try {
+      const salvo = await window.AppDatabase.salvarFornecedor(fornecedor);
+      const fornecedores = loadFornecedores();
+      const idx = fornecedores.findIndex(f => f.id === salvo.id || onlyDigits(f.cnpj) === onlyDigits(salvo.cnpj));
+      if (idx >= 0) fornecedores[idx] = salvo; else fornecedores.unshift(salvo);
+      window.__fornecedoresFonteSupabase = true;
+      window.__fornecedoresData = fornecedores;
+      return salvo;
+    } catch (error) {
+      erroFornecedorSupabaseVisivel("UPSERT", fornecedor, error);
+      throw error;
+    }
+  }
+
+  async function excluirFornecedorPrincipal(id) {
+    if (!supabaseFornecedoresAtivo()) {
+      const fornecedores = loadFornecedores().filter(f => f.id !== id);
+      saveFornecedores(fornecedores, { localOnly: true });
+      return true;
+    }
+
+    try {
+      await window.AppDatabase.excluirFornecedor(id);
+      window.__fornecedoresFonteSupabase = true;
+      window.__fornecedoresData = loadFornecedores().filter(f => f.id !== id);
+      return true;
+    } catch (error) {
+      erroFornecedorSupabaseVisivel("DELETE", { id }, error);
+      throw error;
+    }
+  }
+
   async function persistirProcessoEmBancoOuBackup(processo, listaProcessos) {
     if (!supabaseProcessosAtivo()) {
       saveData(listaProcessos, { localOnly: true });
@@ -1068,9 +1194,15 @@
   }
 
   /* ---------- initLicitatorios (UI) ---------- */
-  function initLicitatorios(container) {
+  async function initLicitatorios(container) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido');
+
+    try {
+      await carregarSecretariasSupabase({ silencioso: true });
+    } catch (error) {
+      console.error('[SUPABASE][secretarias][INIT][ERRO]', error);
+    }
 
     container.innerHTML = `
       <section class="wrap">
@@ -3879,6 +4011,9 @@ maximumFractionDigits:2
         window.__processosLicitatoriosData = data;
         filtered = data.slice();
         selectedProcessos.clear();
+        carregarFornecedoresSupabase({ silencioso: true }).catch(error => {
+          console.error('[SUPABASE][fornecedores][SELECT][ERRO]', error);
+        });
         renderTable();
         showToast('Processos carregados do Supabase.');
       } catch (error) {
@@ -5303,7 +5438,7 @@ function abrirCadastroPessoaVinculadaProcesso(origem) {
     event.target.value = formatCpf(event.target.value);
   });
 
-  dlgPessoa.querySelector('#proc_pessoa_form').addEventListener('submit', (event) => {
+  dlgPessoa.querySelector('#proc_pessoa_form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const nome = dlgPessoa.querySelector('#proc_pessoa_nome').value.trim();
     const cpf = dlgPessoa.querySelector('#proc_pessoa_cpf').value.trim();
@@ -5336,9 +5471,11 @@ function abrirCadastroPessoaVinculadaProcesso(origem) {
       atualizadoEm: new Date().toLocaleString('pt-BR')
     };
 
-    if (idxFornecedor >= 0) fornecedores[idxFornecedor] = atualizado;
-    else fornecedores.unshift(atualizado);
-    saveFornecedores(fornecedores);
+    try {
+      await salvarFornecedorPrincipal(atualizado);
+    } catch (error) {
+      return;
+    }
 
     renderPessoaVinculadaSelect(atualizado, select, status);
     if (select) select.value = pessoa.id;
@@ -8388,8 +8525,19 @@ atualizarEtapasConcluidas();
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
-    function sincronizarFornecedoresDosProcessos() {
+    async function sincronizarFornecedoresDosProcessos() {
+      const fornecedoresAntes = loadFornecedores();
       loadData().forEach(registrarFornecedorDoProcesso);
+      const fornecedoresDepois = loadFornecedores();
+      if (supabaseFornecedoresAtivo()) {
+        const novosOuAlterados = fornecedoresDepois.filter(f => {
+          const antes = fornecedoresAntes.find(a => a.id === f.id || onlyDigits(a.cnpj) === onlyDigits(f.cnpj));
+          return !antes || JSON.stringify(antes) !== JSON.stringify(f);
+        });
+        for (const fornecedor of novosOuAlterados) {
+          await salvarFornecedorPrincipal(fornecedor);
+        }
+      }
     }
 
     function pessoaUsadaEmProcesso(pessoaId) {
@@ -8855,8 +9003,12 @@ atualizarEtapasConcluidas();
       });
 
       container.querySelector('#forn_new').onclick = () => abrirModal();
-      container.querySelector('#forn_sync').onclick = () => {
-        sincronizarFornecedoresDosProcessos();
+      container.querySelector('#forn_sync').onclick = async () => {
+        try {
+          await sincronizarFornecedoresDosProcessos();
+        } catch (error) {
+          return;
+        }
         render();
         showToast('Fornecedores atualizados a partir dos processos.');
       };
@@ -8916,7 +9068,7 @@ atualizarEtapasConcluidas();
         renderPessoasDraft();
       };
 
-      form.addEventListener('submit', (ev) => {
+      form.addEventListener('submit', async (ev) => {
         ev.preventDefault();
         const id = container.querySelector('#forn_id').value;
         const cnpj = container.querySelector('#forn_cnpj').value;
@@ -8943,30 +9095,43 @@ atualizarEtapasConcluidas();
           criadoEm: atual.criadoEm || new Date().toLocaleString('pt-BR')
         };
 
-        if (idx >= 0) fornecedores[idx] = fornecedor;
-        else fornecedores.unshift(fornecedor);
-        saveFornecedores(fornecedores);
+        try {
+          await salvarFornecedorPrincipal(fornecedor);
+        } catch (error) {
+          return;
+        }
         dlg.close();
         render();
         showToast('Fornecedor salvo.');
       });
 
-      container.querySelector('#fornecedor_delete').onclick = () => {
+      container.querySelector('#fornecedor_delete').onclick = async () => {
         const id = container.querySelector('#forn_id').value;
         if (!id || !confirm('Excluir este fornecedor?')) return;
         const fornecedor = loadFornecedores().find(f => f.id === id);
         if (fornecedorUsadoEmProcesso(fornecedor)) {
           return alert('Este fornecedor já está vinculado a processo(s). Para preservar o histórico, a exclusão foi bloqueada.');
         }
-        saveFornecedores(loadFornecedores().filter(f => f.id !== id));
+        try {
+          await excluirFornecedorPrincipal(id);
+        } catch (error) {
+          return;
+        }
         dlg.close();
         render();
         showToast('Fornecedor excluído.');
       };
     }
 
-    sincronizarFornecedoresDosProcessos();
-    render();
+    (async () => {
+      try {
+        await carregarFornecedoresSupabase({ silencioso: true });
+        await sincronizarFornecedoresDosProcessos();
+      } catch (error) {
+        console.error('[SUPABASE][fornecedores][INIT][ERRO]', error);
+      }
+      render();
+    })();
   }
 
   function initCategoriaRegistroPrecoIrp(container) {
