@@ -4248,8 +4248,14 @@ maximumFractionDigits:2
 
     function erroSupabaseVisivel(acao, error) {
       console.error(`Erro ao ${acao} processo no Supabase:`, error);
+      const detalhes = [
+        error?.message || String(error),
+        error?.code ? `Código: ${error.code}` : "",
+        error?.details ? `Detalhes: ${error.details}` : "",
+        error?.hint ? `Dica: ${error.hint}` : ""
+      ].filter(Boolean).join("\n");
       showToast(`Erro ao ${acao} processo no Supabase. Veja o console.`);
-      alert(`Não foi possível ${acao} o processo no Supabase.\n\nDetalhe: ${error?.message || error}`);
+      alert(`Não foi possível ${acao} o processo no Supabase.\n\n${detalhes}`);
     }
 
     async function carregarProcessosSupabase() {

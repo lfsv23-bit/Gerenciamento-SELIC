@@ -1218,12 +1218,25 @@
   async function selecionarPorIds(client, tabela, coluna, ids, order = null) {
     const valores = Array.from(new Set(ids || [])).filter(Boolean);
     if (!valores.length) return [];
-    let query = client.from(tabela).select("*").in(coluna, valores);
-    if (order) query = query.order(order, { ascending: true });
-    const { data, error } = await query;
-    console.log(`[SUPABASE][${tabela}][SELECT_RESULT]`, { data, error });
-    if (error) throw error;
-    return data || [];
+    const CHUNK_SIZE = 80;
+    const all = [];
+    for (let i = 0; i < valores.length; i += CHUNK_SIZE) {
+      const lote = valores.slice(i, i + CHUNK_SIZE);
+      let query = client.from(tabela).select("*").in(coluna, lote);
+      if (order) query = query.order(order, { ascending: true });
+      const { data, error } = await query;
+      console.log(`[SUPABASE][${tabela}][SELECT_RESULT]`, {
+        lote: `${i + 1}-${Math.min(i + CHUNK_SIZE, valores.length)}/${valores.length}`,
+        total: data?.length || 0,
+        error
+      });
+      if (error) {
+        error.message = `${tabela}: ${error.message || "erro ao consultar registros relacionados"}`;
+        throw error;
+      }
+      all.push(...(data || []));
+    }
+    return all;
   }
 
   async function carregarAnexosPorIds(client, ids) {
