@@ -16,6 +16,7 @@
     "COMUNICAÇÃO INTERNA",
     "OFÍCIO"
   ];
+  let tiposProtocoloCache = [];
 
   const ASSUNTOS_PROTOCOLO_PADRAO = {
     "PROCESSO LICITATÓRIO": [
@@ -32,6 +33,7 @@
       "REEQUILÍBRIO ECONÔMICO-FINANCEIRO"
     ]
   };
+  let assuntosProtocoloCache = [];
 
   const SECRETARIAS_PADRAO = [
     "AMHARC","AGETRAT","FUPHAN","FMAP","FUNPREV","SISP","SEMED","SEPRAD","SMSPDS",
@@ -62,12 +64,35 @@
   }
 
   function loadSecretariaMap() {
+    if (window.isSupabaseConfigured?.()) {
+      return window.__secretariaMapData && typeof window.__secretariaMapData === 'object' ? window.__secretariaMapData : {};
+    }
     try { return JSON.parse(localStorage.getItem(SECRETARIA_MAP_KEY) || '{}'); }
     catch (e) { console.error('Erro ao carregar mapa de secretarias:', e); return {}; }
   }
 
   function saveSecretariaMap(map) {
+    if (window.isSupabaseConfigured?.() && window.AppDatabase?.salvarAppSetting) {
+      window.__secretariaMapData = map || {};
+      return window.AppDatabase.salvarAppSetting(SECRETARIA_MAP_KEY, map || {});
+    }
     localStorage.setItem(SECRETARIA_MAP_KEY, JSON.stringify(map));
+  }
+
+  async function carregarSecretariaMapSupabase(options = {}) {
+    if (!(window.isSupabaseConfigured?.() && window.AppDatabase?.obterAppSetting)) {
+      window.__secretariaMapData = loadSecretariaMap();
+      return window.__secretariaMapData;
+    }
+    try {
+      window.__secretariaMapData = await window.AppDatabase.obterAppSetting(SECRETARIA_MAP_KEY, {});
+      return window.__secretariaMapData;
+    } catch (error) {
+      if (!options.silencioso) alert('Não foi possível carregar o mapa de secretarias no Supabase.\n\nDetalhe: ' + (error?.message || error));
+      else console.error('[SUPABASE][app_settings][SELECT][ERRO]', error);
+      window.__secretariaMapData = {};
+      return {};
+    }
   }
 
   function loadFornecedoresLocalForMigration() {
@@ -100,7 +125,7 @@
       .toUpperCase();
   }
 
-  function loadTiposProtocolo() {
+  function loadTiposProtocoloLocalForMigration() {
     let salvos = [];
     try { salvos = JSON.parse(localStorage.getItem(TIPOS_PROTOCOLO_KEY) || '[]'); }
     catch (e) { console.error('Erro ao carregar tipos de protocolo:', e); }
@@ -129,11 +154,28 @@
     return [...map.values()];
   }
 
-  function saveTiposProtocolo(items) {
+  function loadTiposProtocolo() {
+    if (window.isSupabaseConfigured?.()) {
+      return tiposProtocoloCache.length ? tiposProtocoloCache : TIPOS_PROTOCOLO_PADRAO.map(nome => ({
+        id: normalizarCadastro(nome),
+        nome,
+        ativo: true,
+        padrao: true
+      }));
+    }
+    return loadTiposProtocoloLocalForMigration();
+  }
+
+  function saveTiposProtocolo(items, options = {}) {
+    if (window.isSupabaseConfigured?.() && !options.localOnly) {
+      console.warn('[Tipos de Protocolo] saveTiposProtocolo(...) ignorado em modo Supabase. Use AppDatabase para persistir tipos.', items);
+      tiposProtocoloCache = Array.isArray(items) ? items : [];
+      return;
+    }
     localStorage.setItem(TIPOS_PROTOCOLO_KEY, JSON.stringify(items));
   }
 
-  function loadAssuntosProtocolo() {
+  function loadAssuntosProtocoloLocalForMigration() {
     let salvos = [];
     try { salvos = JSON.parse(localStorage.getItem(ASSUNTOS_PROTOCOLO_KEY) || '[]'); }
     catch (e) { console.error('Erro ao carregar assuntos de protocolo:', e); }
@@ -168,28 +210,112 @@
     return [...map.values()];
   }
 
-  function saveAssuntosProtocolo(items) {
+  function loadAssuntosProtocolo() {
+    if (window.isSupabaseConfigured?.()) {
+      return assuntosProtocoloCache.length ? assuntosProtocoloCache : loadAssuntosProtocoloLocalForMigration();
+    }
+    return loadAssuntosProtocoloLocalForMigration();
+  }
+
+  function saveAssuntosProtocolo(items, options = {}) {
+    if (window.isSupabaseConfigured?.() && !options.localOnly) {
+      console.warn('[Assuntos de Protocolo] saveAssuntosProtocolo(...) ignorado em modo Supabase. Use AppDatabase para persistir assuntos.', items);
+      assuntosProtocoloCache = Array.isArray(items) ? items : [];
+      return;
+    }
     localStorage.setItem(ASSUNTOS_PROTOCOLO_KEY, JSON.stringify(items));
   }
 
-  function upsertTipoProtocolo(nome) {
+  function loadIrpsLocalForMigration() {
+    try { return JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]'); }
+    catch (e) { console.error('Erro ao carregar IRPs:', e); return []; }
+  }
+
+  function loadIrpsRegistroPreco() {
+    if (window.isSupabaseConfigured?.()) {
+      return Array.isArray(window.__irpsRegistroPrecoData) ? window.__irpsRegistroPrecoData : [];
+    }
+    return loadIrpsLocalForMigration();
+  }
+
+  function saveIrpsRegistroPrecoLocal(items) {
+    localStorage.setItem(IRP_STORAGE_KEY, JSON.stringify(items));
+  }
+
+  function supabaseIrpsRegistroPrecoAtivo() {
+    return !!(window.isSupabaseConfigured?.() && window.AppDatabase?.listarIrpsRegistroPreco);
+  }
+
+  function erroIrpSupabaseVisivel(operacao, payload, error) {
+    console.error(`[SUPABASE][irps_registro_preco][${operacao}][ERRO]`, { payload, error });
+    alert(`Não foi possível ${operacao === 'DELETE' ? 'excluir' : operacao === 'SELECT' ? 'carregar' : 'salvar'} a IRP no Supabase.\n\nDetalhe: ${error?.message || error}`);
+  }
+
+  async function carregarIrpsRegistroPrecoSupabase(options = {}) {
+    if (!supabaseIrpsRegistroPrecoAtivo()) {
+      window.__irpsRegistroPrecoData = loadIrpsLocalForMigration();
+      return window.__irpsRegistroPrecoData;
+    }
+    try {
+      window.__irpsRegistroPrecoData = await window.AppDatabase.listarIrpsRegistroPreco();
+      return window.__irpsRegistroPrecoData;
+    } catch (error) {
+      if (!options.silencioso) erroIrpSupabaseVisivel('SELECT', null, error);
+      else console.error('[SUPABASE][irps_registro_preco][SELECT][ERRO]', error);
+      window.__irpsRegistroPrecoData = [];
+      return [];
+    }
+  }
+
+  async function salvarIrpRegistroPrecoPrincipal(irp) {
+    if (!supabaseIrpsRegistroPrecoAtivo()) {
+      const irps = loadIrpsLocalForMigration();
+      const idx = irps.findIndex(item => item.id === irp.id);
+      if (idx >= 0) irps[idx] = irp;
+      else irps.unshift(irp);
+      saveIrpsRegistroPrecoLocal(irps);
+      window.__irpsRegistroPrecoData = irps;
+      return irp;
+    }
+    try {
+      const salvo = await window.AppDatabase.salvarIrpRegistroPreco(irp);
+      const cache = loadIrpsRegistroPreco();
+      const idx = cache.findIndex(item => item.id === salvo.id);
+      if (idx >= 0) cache[idx] = salvo;
+      else cache.unshift(salvo);
+      window.__irpsRegistroPrecoData = cache;
+      return salvo;
+    } catch (error) {
+      erroIrpSupabaseVisivel('UPSERT', irp, error);
+      throw error;
+    }
+  }
+
+  async function excluirIrpRegistroPrecoPrincipal(id) {
+    if (!supabaseIrpsRegistroPrecoAtivo()) {
+      saveIrpsRegistroPrecoLocal(loadIrpsLocalForMigration().filter(item => item.id !== id));
+      return true;
+    }
+    try {
+      await window.AppDatabase.excluirIrpRegistroPreco(id);
+      window.__irpsRegistroPrecoData = loadIrpsRegistroPreco().filter(item => item.id !== id);
+      return true;
+    } catch (error) {
+      erroIrpSupabaseVisivel('DELETE', { id }, error);
+      throw error;
+    }
+  }
+
+  async function upsertTipoProtocolo(nome) {
     const clean = String(nome || '').replace(/\s+/g, ' ').trim().toUpperCase();
     if (!clean) return '';
     const tipos = loadTiposProtocolo();
     const existente = tipos.find(t => normalizarCadastro(t.nome) === normalizarCadastro(clean));
     if (existente) return existente.nome;
-    tipos.push({
-      id: genId(),
-      nome: clean,
-      ativo: true,
-      criadoEm: new Date().toLocaleString('pt-BR'),
-      atualizadoEm: new Date().toLocaleString('pt-BR')
-    });
-    saveTiposProtocolo(tipos);
-    return clean;
+    return salvarTipoProtocoloPrincipal({ nome: clean, ativo: true });
   }
 
-  function upsertAssuntoProtocolo(tipo, nome) {
+  async function upsertAssuntoProtocolo(tipo, nome) {
     const tipoClean = String(tipo || '').replace(/\s+/g, ' ').trim().toUpperCase();
     const nomeClean = String(nome || '').replace(/\s+/g, ' ').trim().toUpperCase();
     if (!tipoClean || !nomeClean) return '';
@@ -199,16 +325,7 @@
       normalizarCadastro(a.nome) === normalizarCadastro(nomeClean)
     );
     if (existente) return existente.nome;
-    assuntos.push({
-      id: genId(),
-      tipo: tipoClean,
-      nome: nomeClean,
-      ativo: true,
-      criadoEm: new Date().toLocaleString('pt-BR'),
-      atualizadoEm: new Date().toLocaleString('pt-BR')
-    });
-    saveAssuntosProtocolo(assuntos);
-    return nomeClean;
+    return salvarAssuntoProtocoloPrincipal({ tipo: tipoClean, nome: nomeClean, ativo: true });
   }
 
   function onlyDigits(value) {
@@ -465,13 +582,7 @@
     }
 
     function buscarIrpCompativelComItens(itensAta) {
-      let irps = [];
-      try {
-        irps = JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]');
-      } catch (error) {
-        console.error('Erro ao buscar IRP compatível com itens da ata:', error);
-        return null;
-      }
+      const irps = loadIrpsRegistroPreco();
       const linhasAta = normalizarItensAta(itensAta).slice(1).filter(row => chaveItemAta(row));
       if (!linhasAta.length) return null;
       return irps.find(irp => {
@@ -737,6 +848,137 @@
       return SECRETARIAS;
     } catch (error) {
       if (!options.silencioso) erroSecretariasSupabaseVisivel("SELECT", null, error);
+      throw error;
+    }
+  }
+
+  function supabaseTiposProtocoloAtivo() {
+    return !!(window.AppDatabase?.listarTiposProtocolo && window.AppDatabase?.salvarTipoProtocolo && window.isSupabaseConfigured?.());
+  }
+
+  function erroTiposProtocoloSupabaseVisivel(operacao, payload, error) {
+    console.error(`[SUPABASE][tipos_protocolo][${operacao}][ERRO]`, {
+      tabela: "tipos_protocolo",
+      payload,
+      mensagem: error?.message || String(error || ""),
+      detalhes: error
+    });
+    showToast(`Erro ao ${operacao.toLowerCase()} tipos de protocolo no Supabase. Veja o console.`);
+    alert(`Não foi possível ${operacao.toLowerCase()} os tipos de protocolo no Supabase.\n\nDetalhe: ${error?.message || error}`);
+  }
+
+  async function carregarTiposProtocoloSupabase(options = {}) {
+    if (!supabaseTiposProtocoloAtivo()) return loadTiposProtocolo();
+    try {
+      const tipos = await window.AppDatabase.listarTiposProtocolo();
+      tiposProtocoloCache = tipos.length ? tipos : loadTiposProtocoloLocalForMigration();
+      window.__tiposProtocoloFonteSupabase = true;
+      window.__tiposProtocoloData = tiposProtocoloCache;
+      return tiposProtocoloCache;
+    } catch (error) {
+      if (!options.silencioso) erroTiposProtocoloSupabaseVisivel("SELECT", null, error);
+      throw error;
+    }
+  }
+
+  async function salvarTipoProtocoloPrincipal(tipo) {
+    const nome = String(tipo?.nome || tipo || '').replace(/\s+/g, ' ').trim().toUpperCase();
+    if (!nome) return '';
+    if (!supabaseTiposProtocoloAtivo()) {
+      const tipos = loadTiposProtocoloLocalForMigration();
+      const existente = tipos.find(t => normalizarCadastro(t.nome) === normalizarCadastro(nome));
+      if (!existente) {
+        tipos.push({
+          id: genId(),
+          nome,
+          ativo: true,
+          criadoEm: new Date().toLocaleString('pt-BR'),
+          atualizadoEm: new Date().toLocaleString('pt-BR')
+        });
+        saveTiposProtocolo(tipos, { localOnly: true });
+      }
+      return existente?.nome || nome;
+    }
+
+    try {
+      const salvo = await window.AppDatabase.salvarTipoProtocolo({ nome, ativo: true, padrao: !!tipo?.padrao });
+      const idx = tiposProtocoloCache.findIndex(t => normalizarCadastro(t.nome) === normalizarCadastro(salvo.nome));
+      if (idx >= 0) tiposProtocoloCache[idx] = salvo; else tiposProtocoloCache.push(salvo);
+      window.__tiposProtocoloFonteSupabase = true;
+      window.__tiposProtocoloData = tiposProtocoloCache;
+      return salvo.nome;
+    } catch (error) {
+      erroTiposProtocoloSupabaseVisivel("UPSERT", { nome }, error);
+      throw error;
+    }
+  }
+
+  function supabaseAssuntosProtocoloAtivo() {
+    return !!(window.AppDatabase?.listarAssuntosProtocolo && window.AppDatabase?.salvarAssuntoProtocolo && window.isSupabaseConfigured?.());
+  }
+
+  function erroAssuntosProtocoloSupabaseVisivel(operacao, payload, error) {
+    console.error(`[SUPABASE][assuntos_protocolo][${operacao}][ERRO]`, {
+      tabela: "assuntos_protocolo",
+      payload,
+      mensagem: error?.message || String(error || ""),
+      detalhes: error
+    });
+    showToast(`Erro ao ${operacao.toLowerCase()} assuntos de protocolo no Supabase. Veja o console.`);
+    alert(`Não foi possível ${operacao.toLowerCase()} os assuntos de protocolo no Supabase.\n\nDetalhe: ${error?.message || error}`);
+  }
+
+  async function carregarAssuntosProtocoloSupabase(options = {}) {
+    if (!supabaseAssuntosProtocoloAtivo()) return loadAssuntosProtocolo();
+    try {
+      const assuntos = await window.AppDatabase.listarAssuntosProtocolo();
+      assuntosProtocoloCache = assuntos.length ? assuntos : loadAssuntosProtocoloLocalForMigration();
+      window.__assuntosProtocoloFonteSupabase = true;
+      window.__assuntosProtocoloData = assuntosProtocoloCache;
+      return assuntosProtocoloCache;
+    } catch (error) {
+      if (!options.silencioso) erroAssuntosProtocoloSupabaseVisivel("SELECT", null, error);
+      throw error;
+    }
+  }
+
+  async function salvarAssuntoProtocoloPrincipal(assunto) {
+    const tipo = String(assunto?.tipo || assunto?.tipoProtocolo || '').replace(/\s+/g, ' ').trim().toUpperCase();
+    const nome = String(assunto?.nome || '').replace(/\s+/g, ' ').trim().toUpperCase();
+    if (!tipo || !nome) return '';
+
+    if (!supabaseAssuntosProtocoloAtivo()) {
+      const assuntos = loadAssuntosProtocoloLocalForMigration();
+      const existente = assuntos.find(a =>
+        normalizarCadastro(a.tipo) === normalizarCadastro(tipo) &&
+        normalizarCadastro(a.nome) === normalizarCadastro(nome)
+      );
+      if (!existente) {
+        assuntos.push({
+          id: genId(),
+          tipo,
+          nome,
+          ativo: true,
+          criadoEm: new Date().toLocaleString('pt-BR'),
+          atualizadoEm: new Date().toLocaleString('pt-BR')
+        });
+        saveAssuntosProtocolo(assuntos, { localOnly: true });
+      }
+      return existente?.nome || nome;
+    }
+
+    try {
+      const salvo = await window.AppDatabase.salvarAssuntoProtocolo({ tipo, nome, ativo: true, padrao: !!assunto?.padrao });
+      const idx = assuntosProtocoloCache.findIndex(a =>
+        normalizarCadastro(a.tipo) === normalizarCadastro(salvo.tipo) &&
+        normalizarCadastro(a.nome) === normalizarCadastro(salvo.nome)
+      );
+      if (idx >= 0) assuntosProtocoloCache[idx] = salvo; else assuntosProtocoloCache.push(salvo);
+      window.__assuntosProtocoloFonteSupabase = true;
+      window.__assuntosProtocoloData = assuntosProtocoloCache;
+      return salvo.nome;
+    } catch (error) {
+      erroAssuntosProtocoloSupabaseVisivel("UPSERT", { tipo, nome }, error);
       throw error;
     }
   }
@@ -1110,9 +1352,7 @@
       }
     }
 
-    let irps = [];
-    try { irps = JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]'); }
-    catch (e) { irps = []; }
+    let irps = loadIrpsLocalForMigration();
     for (const irp of irps) {
       const pdfPublicacao = await migrarAnexoBase64ParaIndexedDB(irp.pdfPublicacao);
       if (pdfPublicacao !== irp.pdfPublicacao) { irp.pdfPublicacao = pdfPublicacao; houveMudancaIrps = true; }
@@ -1122,7 +1362,7 @@
     }
 
     if (houveMudancaProcessos) saveData(processos, { localOnly: true });
-    if (houveMudancaIrps) localStorage.setItem(IRP_STORAGE_KEY, JSON.stringify(irps));
+    if (houveMudancaIrps) saveIrpsRegistroPrecoLocal(irps);
     if (houveMudancaProcessos || houveMudancaIrps) {
       showToast('Anexos antigos migrados para IndexedDB.');
     }
@@ -1202,6 +1442,26 @@
       await carregarSecretariasSupabase({ silencioso: true });
     } catch (error) {
       console.error('[SUPABASE][secretarias][INIT][ERRO]', error);
+    }
+    try {
+      await carregarSecretariaMapSupabase({ silencioso: true });
+    } catch (error) {
+      console.error('[SUPABASE][app_settings][INIT][ERRO]', error);
+    }
+    try {
+      await carregarTiposProtocoloSupabase({ silencioso: true });
+    } catch (error) {
+      console.error('[SUPABASE][tipos_protocolo][INIT][ERRO]', error);
+    }
+    try {
+      await carregarAssuntosProtocoloSupabase({ silencioso: true });
+    } catch (error) {
+      console.error('[SUPABASE][assuntos_protocolo][INIT][ERRO]', error);
+    }
+    try {
+      await carregarIrpsRegistroPrecoSupabase({ silencioso: true });
+    } catch (error) {
+      console.error('[SUPABASE][irps_registro_preco][INIT][ERRO]', error);
     }
 
     container.innerHTML = `
@@ -2873,13 +3133,7 @@ Excluir
 
     function irpAtualDoProcesso() {
       const irpId = fld?.irpRegistroPreco?.value || '';
-      try {
-        const irps = JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]');
-        return irps.find(irp => irp.id === irpId) || null;
-      } catch (error) {
-        console.error('Erro ao carregar IRP vinculada ao processo:', error);
-        return null;
-      }
+      return loadIrpsRegistroPreco().find(irp => irp.id === irpId) || null;
     }
 
     function esconderSeletorItensIrpAta() {
@@ -4678,7 +4932,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
         secretaria: sigla,
         criadoEm: new Date().toLocaleString('pt-BR')
       };
-      saveSecretariaMap(map);
+      await saveSecretariaMap(map);
 
       fld.interessadoOriginal.value = interessado;
       fld.secretaria.value = sigla;
@@ -5813,7 +6067,7 @@ function obterItensBaseParaCotacao() {
   if (!bases.length && Array.isArray(credItens) && credItens.length) bases.push(...tabelaParaItensCotacao(credItens));
   if (!bases.length) {
     const irpId = container.querySelector('#lic_irp_registro_preco')?.value || "";
-    const irp = loadIrps().find(row => row.id === irpId);
+    const irp = loadIrpsRegistroPreco().find(row => row.id === irpId);
     if (irp?.itens?.length) bases.push(...tabelaParaItensCotacao(irp.itens));
   }
   if (!bases.length && Array.isArray(atasRegistroPreco) && atasRegistroPreco.length) {
@@ -5905,7 +6159,7 @@ function obterItensBaseParaResultado() {
   if (!bases.length && Array.isArray(credItens) && credItens.length) bases.push(...tabelaParaItensCotacao(credItens).map(normalizarItemParaResultado).filter(Boolean));
   if (!bases.length) {
     const irpId = container.querySelector('#lic_irp_registro_preco')?.value || "";
-    const irp = loadIrps().find(row => row.id === irpId);
+    const irp = loadIrpsRegistroPreco().find(row => row.id === irpId);
     if (irp?.itens?.length) bases.push(...tabelaParaItensCotacao(irp.itens).map(normalizarItemParaResultado).filter(Boolean));
   }
   return bases;
@@ -6327,14 +6581,14 @@ let tipoProtocoloSelecionado = fld.tipoProcesso.value ||
   itemAnterior.tipoProtocolo ||
   (itemAnterior.tipoProcesso === "credenciamento" || itemAnterior.tipoProcesso === "licitacao" ? "PROCESSO LICITATÓRIO" : (itemAnterior.tipoProcesso || ""));
 if (tipoProtocoloSelecionado === "OUTROS") {
-  tipoProtocoloSelecionado = upsertTipoProtocolo(fld.novoTipoProtocolo.value);
+  tipoProtocoloSelecionado = await upsertTipoProtocolo(fld.novoTipoProtocolo.value);
 }
 
 let assuntoProtocoloSelecionado = fld.assuntoProtocolo.value ||
   itemAnterior.assuntoProtocolo ||
   "";
 if (assuntoProtocoloSelecionado === "OUTROS") {
-  assuntoProtocoloSelecionado = upsertAssuntoProtocolo(tipoProtocoloSelecionado, fld.novoAssuntoProtocolo.value);
+  assuntoProtocoloSelecionado = await upsertAssuntoProtocolo(tipoProtocoloSelecionado, fld.novoAssuntoProtocolo.value);
 }
 
 const naturezaSelecionada = fld.naturezaProcesso?.value ||
@@ -6956,11 +7210,7 @@ const recursoVisual = Array.isArray(item.sdRecurso) && item.sdRecurso.length
 const modalidadeVisual = item.trModalidade ? String(item.trModalidade).toLocaleUpperCase("pt-BR") : "";
 let irpVisual = null;
 if (item.irpRegistroPreco) {
-  try {
-    irpVisual = JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]').find(irp => irp.id === item.irpRegistroPreco) || null;
-  } catch (error) {
-    console.error('Erro ao carregar IRP vinculada:', error);
-  }
+  irpVisual = loadIrpsRegistroPreco().find(irp => irp.id === item.irpRegistroPreco) || null;
 }
 const irpVisualTexto = irpVisual ? `IRP ${irpVisual.numero || ""}/${irpVisual.ano || ""}${irpVisual.objeto ? " - " + irpVisual.objeto : ""}` : "IRP vinculada não encontrada";
 const registroPrecoHtml = item.tipoRegistroPreco ? `
@@ -7173,8 +7423,7 @@ ${registroPrecoHtml}
       const tipoAdesaoVisual = item.tipoAdesaoRegistro || (item.processoGerador ? 'interna' : '');
       let irpVisual = null;
       if (item.irpRegistroPreco) {
-        try { irpVisual = JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]').find(irp => irp.id === item.irpRegistroPreco) || null; }
-        catch (error) { console.error('Erro ao carregar IRP vinculada:', error); }
+        irpVisual = loadIrpsRegistroPreco().find(irp => irp.id === item.irpRegistroPreco) || null;
       }
       const irpTexto = irpVisual ? `IRP ${irpVisual.numero || ''}/${irpVisual.ano || ''}${irpVisual.objeto ? ' - ' + irpVisual.objeto : ''}` : '';
 
@@ -7668,13 +7917,7 @@ selectAtaVinculada?.addEventListener("change", () => aplicarAtaVinculadaAdesao()
 function carregarIrpsRegistroPreco(selecionado = ""){
   if (!selectIrpRegistroPreco) return;
   const atual = selecionado || selectIrpRegistroPreco.value;
-  let irps = [];
-  try {
-    irps = JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]');
-  } catch (error) {
-    console.error('Erro ao carregar IRPs:', error);
-    irps = [];
-  }
+  const irps = loadIrpsRegistroPreco();
 
   selectIrpRegistroPreco.innerHTML = '<option value="">-- selecione uma IRP cadastrada --</option>';
   irps.forEach(irp => {
@@ -9145,15 +9388,6 @@ atualizarEtapasConcluidas();
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
-    const loadIrps = () => {
-      try { return JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]'); }
-      catch (e) { console.error('Erro ao carregar IRPs:', e); return []; }
-    };
-
-    const saveIrps = (items) => {
-      localStorage.setItem(IRP_STORAGE_KEY, JSON.stringify(items));
-    };
-
     const aplicarMascaraDataLocal = (campo) => {
       if (!campo) return;
       campo.addEventListener('input', () => {
@@ -9193,7 +9427,7 @@ atualizarEtapasConcluidas();
 
     const linkPdf = (arquivo, label) => linkAnexoPdf(arquivo, label);
 
-    let irps = loadIrps();
+    let irps = loadIrpsRegistroPreco();
     let itensDraft = [];
     let editId = '';
 
@@ -9370,7 +9604,7 @@ atualizarEtapasConcluidas();
     }
 
     function renderLista() {
-      irps = loadIrps();
+      irps = loadIrpsRegistroPreco();
       lista.innerHTML = irps.length ? `
         <div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:10px">
           <strong>${irps.length} IRP(s) cadastrada(s)</strong>
@@ -9473,16 +9707,15 @@ atualizarEtapasConcluidas();
         atualizadoEm: new Date().toLocaleString('pt-BR')
       };
 
-      if (idx >= 0) irps[idx] = item;
-      else irps.unshift(item);
-      await sincronizarProcessoGeradorDaIrp(item);
       try {
-        saveIrps(irps);
+        const salvo = await salvarIrpRegistroPrecoPrincipal(item);
+        irps = loadIrpsRegistroPreco();
+        await sincronizarProcessoGeradorDaIrp(salvo);
       } catch (error) {
         const isQuota = error?.name === 'QuotaExceededError' || String(error?.message || '').toLowerCase().includes('quota');
         if (!isQuota) {
           console.error('Erro ao salvar IRP:', error);
-          return alert('Não foi possível salvar a IRP. Verifique o console para mais detalhes.');
+          return;
         }
 
         const salvarSemAnexos = confirm(
@@ -9496,11 +9729,15 @@ atualizarEtapasConcluidas();
         else irps[0] = item;
 
         try {
-          await sincronizarProcessoGeradorDaIrp(item);
-          saveIrps(irps);
+          const salvoSemAnexos = await salvarIrpRegistroPrecoPrincipal(item);
+          irps = loadIrpsRegistroPreco();
+          await sincronizarProcessoGeradorDaIrp(salvoSemAnexos);
         } catch (fallbackError) {
           console.error('Erro ao salvar IRP sem anexos:', fallbackError);
-          return alert('Ainda não foi possível salvar a IRP. O armazenamento do navegador pode estar cheio.');
+          if (!supabaseIrpsRegistroPrecoAtivo()) {
+            return alert('Ainda não foi possível salvar a IRP. O armazenamento do navegador pode estar cheio.');
+          }
+          return;
         }
       }
       dlg.close();
@@ -9513,9 +9750,13 @@ atualizarEtapasConcluidas();
     container.querySelector('#irp_cancel').onclick = () => dlg.close();
     container.querySelector('#irp_save').onclick = salvarForm;
     container.querySelector('#irp_itens_close').onclick = () => dlgItens.close();
-    container.querySelector('#irp_delete').onclick = () => {
+    container.querySelector('#irp_delete').onclick = async () => {
       if (!editId || !confirm('Excluir esta IRP?')) return;
-      saveIrps(irps.filter(item => item.id !== editId));
+      try {
+        await excluirIrpRegistroPrecoPrincipal(editId);
+      } catch (error) {
+        return;
+      }
       dlg.close();
       renderLista();
       showToast('IRP excluída.');
@@ -9551,7 +9792,10 @@ atualizarEtapasConcluidas();
       }
     });
 
-    renderLista();
+    (async () => {
+      await carregarIrpsRegistroPrecoSupabase({ silencioso: true });
+      renderLista();
+    })();
   }
 
   function initCategoriaRegistroPrecoAdesoes(container) {
@@ -9876,13 +10120,7 @@ atualizarEtapasConcluidas();
       if (!processoId) return null;
       const processosAtualizados = loadData();
       const processo = processosAtualizados.find(p => p.id === processoId);
-      let irps = [];
-      try {
-        irps = JSON.parse(localStorage.getItem(IRP_STORAGE_KEY) || '[]');
-      } catch (error) {
-        console.error('Erro ao carregar IRPs para seleção de itens da ata:', error);
-        irps = [];
-      }
+      const irps = loadIrpsRegistroPreco();
       const irpId = processo?.irpRegistroPreco || '';
       return irps.find(irp => irp.id === irpId) || irps.find(irp => irp.processoGerador === processoId) || null;
     }

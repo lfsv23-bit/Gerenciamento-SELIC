@@ -369,6 +369,35 @@ insert into public.secretarias (sigla) values
   ('SMS'), ('SELIC')
 on conflict (sigla) do nothing;
 
+insert into public.tipos_protocolo (nome, ativo, padrao) values
+  ('PROCESSO LICITATÓRIO', true, true),
+  ('SOLICITAÇÃO', true, true),
+  ('MANIFESTAÇÃO DE INTERESSE', true, true),
+  ('COMUNICAÇÃO INTERNA', true, true),
+  ('OFÍCIO', true, true)
+on conflict (nome) do update set
+  ativo = excluded.ativo,
+  padrao = excluded.padrao;
+
+insert into public.assuntos_protocolo (tipo_protocolo_id, tipo_nome, nome, ativo, padrao)
+select tp.id, v.tipo_nome, v.nome, true, true
+from (values
+  ('PROCESSO LICITATÓRIO', 'AQUISIÇÃO DE BENS'),
+  ('PROCESSO LICITATÓRIO', 'CONTRATA MAIS BRASIL'),
+  ('PROCESSO LICITATÓRIO', 'CREDENCIAMENTO'),
+  ('PROCESSO LICITATÓRIO', 'PRESTAÇÃO DE SERVIÇOS'),
+  ('PROCESSO LICITATÓRIO', 'OBRAS E SERVIÇOS DE ENGENHARIA'),
+  ('PROCESSO LICITATÓRIO', 'LOCAÇÃO'),
+  ('SOLICITAÇÃO', 'CADASTRO DE PRODUTO'),
+  ('SOLICITAÇÃO', 'CADASTRO DE USUÁRIO NO SISTEMA'),
+  ('SOLICITAÇÃO', 'REEQUILÍBRIO ECONÔMICO-FINANCEIRO')
+) as v(tipo_nome, nome)
+left join public.tipos_protocolo tp on tp.nome = v.tipo_nome
+on conflict (tipo_nome, nome) do update set
+  tipo_protocolo_id = excluded.tipo_protocolo_id,
+  ativo = excluded.ativo,
+  padrao = excluded.padrao;
+
 -- Auditoria: esta consulta deve retornar zero linhas para confirmar que nao
 -- sobrou policy aberta para anon nas tabelas do sistema.
 select schemaname, tablename, policyname, roles, cmd

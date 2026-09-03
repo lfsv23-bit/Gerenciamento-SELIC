@@ -2,14 +2,72 @@
 // Mantive toda a lógica de entradas/histórico já existente e apenas adicionei o painel
 (() => {
   const STORAGE_KEY = 'tramitesProcessos';
+  const PROCESSOS_STORAGE_KEY = 'processosLicitatorios';
+  let tramitesInternosCache = [];
+  let processosCache = [];
 
   /* ---------- Utilitários ---------- */
   function loadData() {
+    if (window.isSupabaseConfigured?.()) return Array.isArray(tramitesInternosCache) ? tramitesInternosCache : [];
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
     catch { return []; }
   }
-  function saveData(items) {
+  async function saveData(items) {
+    if (window.isSupabaseConfigured?.() && window.AppDatabase?.salvarTramitesInternos) {
+      tramitesInternosCache = Array.isArray(items) ? items : [];
+      try {
+        await window.AppDatabase.salvarTramitesInternos(tramitesInternosCache);
+      } catch (error) {
+        console.error('[SUPABASE][tramites_internos][SAVE][ERRO]', error);
+        alert('Não foi possível salvar os trâmites internos no Supabase.\n\nDetalhe: ' + (error?.message || error));
+        throw error;
+      }
+      return;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+  }
+  function carregarProcessosLicitatoriosLocal() {
+    try { return JSON.parse(localStorage.getItem(PROCESSOS_STORAGE_KEY) || '[]'); }
+    catch { return []; }
+  }
+  function carregarProcessosLicitatorios() {
+    if (window.isSupabaseConfigured?.()) {
+      return Array.isArray(processosCache) && processosCache.length
+        ? processosCache
+        : (Array.isArray(window.__processosLicitatoriosData) ? window.__processosLicitatoriosData : []);
+    }
+    return carregarProcessosLicitatoriosLocal();
+  }
+  async function carregarProcessosSupabaseParaTramites() {
+    if (window.isSupabaseConfigured?.() && window.AppDatabase?.loadProcessosCompletos) {
+      try {
+        processosCache = await window.AppDatabase.loadProcessosCompletos();
+        window.__processosLicitatoriosData = processosCache;
+        return processosCache;
+      } catch (error) {
+        console.error('[SUPABASE][processos][SELECT][TRAMITES][ERRO]', error);
+        alert('Não foi possível carregar os processos no Supabase.\n\nDetalhe: ' + (error?.message || error));
+        processosCache = [];
+        return [];
+      }
+    }
+    processosCache = carregarProcessosLicitatoriosLocal();
+    return processosCache;
+  }
+  async function carregarTramitesInternosSupabase() {
+    if (window.isSupabaseConfigured?.() && window.AppDatabase?.listarTramitesInternos) {
+      try {
+        tramitesInternosCache = await window.AppDatabase.listarTramitesInternos();
+        return tramitesInternosCache;
+      } catch (error) {
+        console.error('[SUPABASE][tramites_internos][SELECT][ERRO]', error);
+        alert('Não foi possível carregar os trâmites internos no Supabase.\n\nDetalhe: ' + (error?.message || error));
+        tramitesInternosCache = [];
+        return [];
+      }
+    }
+    tramitesInternosCache = loadData();
+    return tramitesInternosCache;
   }
   function genId() {
     return String(Date.now()) + Math.floor(Math.random() * 1000);
@@ -31,7 +89,7 @@
   }
 
   /* ---------- Módulo ---------- */
-  function initTramites(container, opcoes = {}) {
+  async function initTramites(container, opcoes = {}) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido para initTramites');
 
@@ -379,9 +437,10 @@
     const btnFiltroTodos = container.querySelector('#filtro_todos');
 
     /* ---------- Estado ---------- */
-    let data = loadData();
+    await carregarProcessosSupabaseParaTramites();
+    let data = await carregarTramitesInternosSupabase();
     // 🔄 MIGRAÇÃO: preencher dataPrimeiraEntrada para registros antigos
-(function migrarDatasAntigas() {
+(async function migrarDatasAntigas() {
   let alterou = false;
 
   // agrupar por número do processo
@@ -411,7 +470,7 @@
   });
 
   if (alterou) {
-    saveData(data);
+    await saveData(data);
     console.log('✅ Migração concluída: dataPrimeiraEntrada preenchida');
   }
 })();
@@ -504,7 +563,7 @@
       const numero = String(item.numero).trim().toLowerCase();
 
       // Buscar dados do processo licitatório
-      const processos = JSON.parse(localStorage.getItem('processosLicitatorios') || '[]');
+      const processos = carregarProcessosLicitatorios();
       const processo = processos.find(p => String(p.numero || '').trim().toLowerCase() === numero);
 
       // Trâmites do mesmo processo ordenados por entrada asc e dataEntrada asc
@@ -601,7 +660,7 @@
       const numero = String(item.numero).trim().toLowerCase();
 
       // Buscar dados do processo licitatório
-      const processos = JSON.parse(localStorage.getItem('processosLicitatorios') || '[]');
+      const processos = carregarProcessosLicitatorios();
       const processo = processos.find(p => String(p.numero || '').trim().toLowerCase() === numero);
 
       // Histórico ordenado
@@ -891,7 +950,7 @@
     }
 
     function renderResultados(query) {
-      const processos = JSON.parse(localStorage.getItem('processosLicitatorios') || '[]');
+      const processos = carregarProcessosLicitatorios();
       const q = (query || '').trim().toLowerCase();
       const results = processos.filter(p => {
         const text = `${p.numero || ''} ${p.objeto || ''} ${p.secretaria || ''}`.toLowerCase();
@@ -1086,8 +1145,8 @@
     buscaInput.addEventListener('input', (e) => renderResultados(e.target.value));
     qInput.addEventListener('input', () => renderTable());
 
-    fld.saveBtn.addEventListener('click', (ev) => { if (typeof onSave === 'function') onSave(ev); });
-    fld.deleteBtn.addEventListener('click', (ev) => { if (typeof onDelete === 'function') onDelete(ev); });
+    fld.saveBtn.addEventListener('click', async (ev) => { if (typeof onSave === 'function') await onSave(ev); });
+    fld.deleteBtn.addEventListener('click', async (ev) => { if (typeof onDelete === 'function') await onDelete(ev); });
 
     // Filtros de status (botões rápidos)
     btnFiltroPendentes.addEventListener('click', () => { filtroAtual = 'pendentes'; renderTable(); });
@@ -1144,7 +1203,7 @@
     renderTable();
 
     /* ---------- Save / Delete / Toast ---------- */
-    function onSave(ev) {
+    async function onSave(ev) {
       ev?.preventDefault?.();
 
       // coleta valores do formulário (sempre usar os campos atuais)
@@ -1242,11 +1301,17 @@ data.unshift(item);
         } else {
           // keep existing
         }
-        const all = JSON.parse(localStorage.getItem('processosLicitatorios') || '[]');
+        const all = carregarProcessosLicitatorios();
         const idx = all.findIndex(x => x.numero === proc.numero);
         if (idx >= 0) {
           all[idx].qtdEntradas = proc.qtdEntradas;
-          localStorage.setItem('processosLicitatorios', JSON.stringify(all));
+          processosCache = all;
+          window.__processosLicitatoriosData = all;
+          if (window.isSupabaseConfigured?.() && window.AppDatabase?.saveProcessoCompleto) {
+            await window.AppDatabase.saveProcessoCompleto(all[idx]);
+          } else {
+            localStorage.setItem('processosLicitatorios', JSON.stringify(all));
+          }
         }
         // acionar reload se existir
         window.reloadProcessosLicitatorios?.();
@@ -1267,7 +1332,7 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
 }
 
       // salvar e atualizar UI
-      saveData(data);
+      await saveData(data);
       populateResponsavelOptions();
       renderTable();
       dlgForm.close();
@@ -1278,12 +1343,12 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
       currentAction = 'new';
     }
 
-    function onDelete() {
+    async function onDelete() {
       const id = fld.idx.value;
       if (!id) return;
       if (!confirm('Excluir este trâmite?')) return;
       data = data.filter(x => String(x.id) !== String(id));
-      saveData(data);
+      await saveData(data);
       populateResponsavelOptions();
       renderTable();
       dlgForm.close();
@@ -1326,7 +1391,7 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
   }
 
   function initTramitesInterno(container) {
-    initTramites(container, {
+    return initTramites(container, {
       titulo: 'Trâmites Internos',
       subtitulo: 'Acompanhe os trâmites realizados dentro do setor.',
       tipoInicial: 'INTERNO'
@@ -1367,17 +1432,47 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
       .toLowerCase()
       .trim();
 
-    function carregarProcessos() {
-      try { return JSON.parse(localStorage.getItem('processosLicitatorios') || '[]'); }
-      catch { return []; }
+    let processosGeraisCache = [];
+    let tramitesGeraisCache = {};
+
+    async function carregarDadosGeraisSupabase() {
+      if (window.isSupabaseConfigured?.() && window.AppDatabase?.loadProcessosCompletos) {
+        processosGeraisCache = await window.AppDatabase.loadProcessosCompletos();
+      } else {
+        processosGeraisCache = carregarProcessosLicitatoriosLocal();
+      }
+
+      if (window.isSupabaseConfigured?.() && window.AppDatabase?.listarTramitesGerais) {
+        tramitesGeraisCache = await window.AppDatabase.listarTramitesGerais();
+      } else {
+        tramitesGeraisCache = carregarTramitesGeraisLocal();
+      }
     }
 
-    function carregarTramitesGerais() {
+    function carregarProcessos() {
+      if (window.isSupabaseConfigured?.()) return processosGeraisCache;
+      return carregarProcessosLicitatoriosLocal();
+    }
+
+    function carregarTramitesGeraisLocal() {
       try { return JSON.parse(localStorage.getItem(TRAMITES_GERAIS_KEY) || '{}'); }
       catch { return {}; }
     }
 
-    function salvarTramitesGerais(data) {
+    function carregarTramitesGerais() {
+      if (window.isSupabaseConfigured?.()) return tramitesGeraisCache || {};
+      return carregarTramitesGeraisLocal();
+    }
+
+    async function salvarTramitesGerais(data) {
+      if (window.isSupabaseConfigured?.() && window.AppDatabase?.saveTramitesGerais) {
+        tramitesGeraisCache = data || {};
+        for (const [numero, registro] of Object.entries(tramitesGeraisCache)) {
+          const tramites = Array.isArray(registro) ? registro : (registro?.tramites || []);
+          await window.AppDatabase.saveTramitesGerais(numero, tramites);
+        }
+        return;
+      }
       localStorage.setItem(TRAMITES_GERAIS_KEY, JSON.stringify(data || {}));
     }
 
@@ -1497,7 +1592,7 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
         });
       }
 
-      salvarTramitesGerais(store);
+      await salvarTramitesGerais(store);
       render();
 
       let msg = `${atualizados.size} processo(s) atualizado(s).\n${tramitesImportados} trâmite(s) lido(s) do TXT.`;
@@ -1713,6 +1808,12 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
       if (typeof modal.close === 'function') modal.close();
       else modal.removeAttribute('open');
     });
+    try {
+      await carregarDadosGeraisSupabase();
+    } catch (error) {
+      console.error('[SUPABASE][tramites_gerais][INIT][ERRO]', error);
+      alert('Não foi possível carregar os trâmites gerais no Supabase.\n\nDetalhe: ' + (error?.message || error));
+    }
     render();
   }
 

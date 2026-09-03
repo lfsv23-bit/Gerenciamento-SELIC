@@ -235,6 +235,165 @@
     console.log(`[SUPABASE][secretarias][${operacao}]`, detalhes);
   }
 
+  function tipoProtocoloFromRow(row) {
+    return {
+      id: row.id,
+      nome: row.nome || "",
+      ativo: row.ativo !== false,
+      padrao: !!row.padrao,
+      criadoEm: formatDateTimeBR(row.created_at),
+      atualizadoEm: formatDateTimeBR(row.updated_at)
+    };
+  }
+
+  function logSupabaseTipoProtocolo(operacao, detalhes) {
+    console.log(`[SUPABASE][tipos_protocolo][${operacao}]`, detalhes);
+  }
+
+  function assuntoProtocoloFromRow(row) {
+    return {
+      id: row.id,
+      tipo: row.tipo_nome || "",
+      tipoProtocoloId: row.tipo_protocolo_id || "",
+      nome: row.nome || "",
+      ativo: row.ativo !== false,
+      padrao: !!row.padrao,
+      criadoEm: formatDateTimeBR(row.created_at),
+      atualizadoEm: formatDateTimeBR(row.updated_at)
+    };
+  }
+
+  function logSupabaseAssuntoProtocolo(operacao, detalhes) {
+    console.log(`[SUPABASE][assuntos_protocolo][${operacao}]`, detalhes);
+  }
+
+  async function obterTipoProtocoloIdPorNome(client, nome) {
+    const tipoNome = String(nome || "").replace(/\s+/g, " ").trim().toUpperCase();
+    if (!tipoNome) return null;
+    const { data, error } = await client
+      .from("tipos_protocolo")
+      .select("id")
+      .eq("nome", tipoNome)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.id || null;
+  }
+
+  async function listarAssuntosProtocolo(tipoNome = "") {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const tipoFiltro = String(tipoNome || "").replace(/\s+/g, " ").trim().toUpperCase();
+    logSupabaseAssuntoProtocolo("SELECT", { tabela: "assuntos_protocolo", tipo: tipoFiltro || null });
+    let query = client
+      .from("assuntos_protocolo")
+      .select("*")
+      .eq("ativo", true)
+      .order("tipo_nome", { ascending: true })
+      .order("nome", { ascending: true });
+    if (tipoFiltro) query = query.eq("tipo_nome", tipoFiltro);
+    const { data, error } = await query;
+    logSupabaseAssuntoProtocolo("SELECT_RESULT", { data, error });
+    if (error) throw error;
+    return (data || []).map(assuntoProtocoloFromRow);
+  }
+
+  async function salvarAssuntoProtocolo(assunto) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const payload = {
+      tipo_nome: String(assunto?.tipo || assunto?.tipoProtocolo || assunto?.tipo_nome || "").replace(/\s+/g, " ").trim().toUpperCase(),
+      nome: String(assunto?.nome || "").replace(/\s+/g, " ").trim().toUpperCase(),
+      ativo: assunto?.ativo !== false,
+      padrao: !!assunto?.padrao,
+      tipo_protocolo_id: null
+    };
+    if (!payload.tipo_nome) throw new Error("Informe o tipo do protocolo para cadastrar o assunto.");
+    if (!payload.nome) throw new Error("Informe o nome do assunto do protocolo.");
+    payload.tipo_protocolo_id = await obterTipoProtocoloIdPorNome(client, payload.tipo_nome);
+
+    logSupabaseAssuntoProtocolo("UPSERT", { tabela: "assuntos_protocolo", payload });
+    const { data, error } = await client
+      .from("assuntos_protocolo")
+      .upsert(payload, { onConflict: "tipo_nome,nome" })
+      .select("*")
+      .single();
+    logSupabaseAssuntoProtocolo("UPSERT_RESULT", { data, error });
+    if (error) throw error;
+    return assuntoProtocoloFromRow(data);
+  }
+
+  async function excluirAssuntoProtocolo(tipoNome, nome) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const payload = {
+      tipo_nome: String(tipoNome || "").replace(/\s+/g, " ").trim().toUpperCase(),
+      nome: String(nome || "").replace(/\s+/g, " ").trim().toUpperCase()
+    };
+    if (!payload.tipo_nome || !payload.nome) throw new Error("Informe tipo e assunto para excluir.");
+    logSupabaseAssuntoProtocolo("DELETE", { tabela: "assuntos_protocolo", payload });
+    const { data, error } = await client
+      .from("assuntos_protocolo")
+      .update({ ativo: false })
+      .eq("tipo_nome", payload.tipo_nome)
+      .eq("nome", payload.nome)
+      .select("*")
+      .single();
+    logSupabaseAssuntoProtocolo("DELETE_RESULT", { data, error });
+    if (error) throw error;
+    return assuntoProtocoloFromRow(data);
+  }
+
+  async function listarTiposProtocolo() {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    logSupabaseTipoProtocolo("SELECT", { tabela: "tipos_protocolo" });
+    const { data, error } = await client
+      .from("tipos_protocolo")
+      .select("*")
+      .eq("ativo", true)
+      .order("nome", { ascending: true });
+    logSupabaseTipoProtocolo("SELECT_RESULT", { data, error });
+    if (error) throw error;
+    return (data || []).map(tipoProtocoloFromRow);
+  }
+
+  async function salvarTipoProtocolo(tipo) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const payload = {
+      nome: String(tipo?.nome || "").replace(/\s+/g, " ").trim().toUpperCase(),
+      ativo: tipo?.ativo !== false,
+      padrao: !!tipo?.padrao
+    };
+    if (!payload.nome) throw new Error("Informe o nome do tipo de protocolo.");
+    logSupabaseTipoProtocolo("UPSERT", { tabela: "tipos_protocolo", payload });
+    const { data, error } = await client
+      .from("tipos_protocolo")
+      .upsert(payload, { onConflict: "nome" })
+      .select("*")
+      .single();
+    logSupabaseTipoProtocolo("UPSERT_RESULT", { data, error });
+    if (error) throw error;
+    return tipoProtocoloFromRow(data);
+  }
+
+  async function excluirTipoProtocolo(nome) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const payload = { nome: String(nome || "").replace(/\s+/g, " ").trim().toUpperCase(), ativo: false };
+    if (!payload.nome) throw new Error("Informe o nome do tipo de protocolo.");
+    logSupabaseTipoProtocolo("DELETE", { tabela: "tipos_protocolo", payload });
+    const { data, error } = await client
+      .from("tipos_protocolo")
+      .update({ ativo: false })
+      .eq("nome", payload.nome)
+      .select("*")
+      .single();
+    logSupabaseTipoProtocolo("DELETE_RESULT", { data, error });
+    if (error) throw error;
+    return tipoProtocoloFromRow(data);
+  }
+
   async function listarSecretarias() {
     const client = requireClient();
     await requireAuthenticatedUser();
@@ -409,6 +568,158 @@
     return data?.id || null;
   }
 
+  async function salvarAnexoMeta(client, arquivo, origem = "") {
+    if (!arquivo || typeof arquivo !== "object") return null;
+    const local = arquivo.id || arquivo.local_id || arquivo.localId || `${origem}_${arquivo.nome || arquivo.name || ""}_${arquivo.tamanho || arquivo.size || ""}`;
+    if (!String(local || "").trim() && !arquivo.nome && !arquivo.name) return null;
+    const payload = {
+      local_id: localId("anexo", local),
+      nome: arquivo.nome || arquivo.name || "",
+      tipo: arquivo.tipo || arquivo.type || "",
+      tamanho: arquivo.tamanho || arquivo.size || null,
+      storage_bucket: arquivo.storageBucket || arquivo.storage_bucket || "",
+      storage_path: arquivo.storagePath || arquivo.storage_path || arquivo.id || "",
+      origem,
+      extra: arquivo
+    };
+    console.log("[SUPABASE][anexos][UPSERT]", { payload });
+    const { data, error } = await client
+      .from("anexos")
+      .upsert(payload, { onConflict: "local_id" })
+      .select("id")
+      .single();
+    console.log("[SUPABASE][anexos][UPSERT_RESULT]", { data, error });
+    if (error) throw error;
+    return data?.id || null;
+  }
+
+  function anexoFromRow(row) {
+    if (!row) return null;
+    const extra = row.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      supabaseId: row.id,
+      nome: row.nome || extra.nome || "",
+      tipo: row.tipo || extra.tipo || "",
+      tamanho: row.tamanho ?? extra.tamanho ?? null,
+      storage: extra.storage || (row.storage_path ? "supabase" : extra.storage || ""),
+      storageBucket: row.storage_bucket || extra.storageBucket || "",
+      storagePath: row.storage_path || extra.storagePath || ""
+    };
+  }
+
+  function itemFromRow(row) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      item: extra.item || row.ordem || "",
+      codigo: row.codigo || extra.codigo || "",
+      descricao: row.descricao || extra.descricao || extra.nome || extra.produto || "",
+      unidade: row.unidade || extra.unidade || extra.unidadeMedida || "",
+      quantidade: row.quantidade ?? extra.quantidade ?? extra.qtd ?? "",
+      valorUnitario: row.valor_unitario ?? extra.valorUnitario ?? extra.unitario ?? extra.valor ?? "",
+      valorTotal: row.valor_total ?? extra.valorTotal ?? extra.total ?? "",
+      situacao: row.situacao || extra.situacao || "",
+      origem: row.origem || extra.origem || ""
+    };
+  }
+
+  function tableItemFromRow(row) {
+    if (Array.isArray(row.extra?.raw)) return row.extra.raw;
+    const extra = row?.extra && typeof row.extra === "object" ? row.extra : {};
+    if (Array.isArray(extra)) return extra;
+    return [
+      row.codigo || extra.codigo || "",
+      row.descricao || extra.descricao || "",
+      row.unidade || extra.unidade || "",
+      row.quantidade ?? extra.quantidade ?? "",
+      row.valor_unitario ?? extra.valorUnitario ?? "",
+      row.valor_total ?? extra.valorTotal ?? ""
+    ];
+  }
+
+  function publicacaoProcessoFromRow(row, anexosPorId) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    const anexo = anexosPorId?.get(row.anexo_id) || extra.anexo || null;
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      bloco: row.bloco || extra.bloco || "",
+      tipo: row.tipo || extra.tipo || "",
+      titulo: row.titulo || extra.titulo || extra.nome || "",
+      data: formatDateBR(row.data_publicacao) || extra.data || extra.dataPublicacao || "",
+      dataPublicacao: formatDateBR(row.data_publicacao) || extra.dataPublicacao || extra.data || "",
+      link: row.link || extra.link || extra.url || "",
+      anexo
+    };
+  }
+
+  function publicacaoAtaFromRow(row, anexosPorId) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    const pdf = anexosPorId?.get(row.anexo_id) || extra.pdf || null;
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      tipo: row.tipo || extra.tipo || "",
+      nome: row.titulo || extra.nome || extra.titulo || "",
+      titulo: row.titulo || extra.titulo || extra.nome || "",
+      data: formatDateBR(row.data_publicacao) || extra.data || "",
+      link: row.link || extra.link || "",
+      pdf
+    };
+  }
+
+  function aditivoAtaFromRow(row, publicacoes, anexosPorId) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    const pdf = anexosPorId?.get(row.anexo_id) || extra.pdf || null;
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      numero: row.numero || extra.numero || "",
+      objetoAditivado: row.objeto_aditivado || extra.objetoAditivado || "",
+      alteraVigencia: row.altera_vigencia ?? extra.alteraVigencia ?? false,
+      vigencia: row.vigencia || extra.vigencia || "",
+      dataAssinatura: formatDateBR(row.data_assinatura) || extra.dataAssinatura || "",
+      publicacao: formatDateBR(row.data_publicacao) || extra.publicacao || "",
+      pdf,
+      publicacoesExtrato: publicacoes || []
+    };
+  }
+
+  function ataRegistroPrecoFromRow(row, filhos = {}, anexosPorId = new Map(), fornecedoresPorId = new Map()) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    const fornecedor = fornecedoresPorId.get(row.fornecedor_id);
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      supabaseId: row.id,
+      numero: row.numero || extra.numero || "",
+      ano: row.ano || extra.ano || "",
+      unidadeOrcamentaria: row.unidade_orcamentaria || extra.unidadeOrcamentaria || "",
+      objeto: row.objeto || extra.objeto || "",
+      objetoResumido: row.objeto_resumido || extra.objetoResumido || "",
+      modalidade: row.modalidade || extra.modalidade || "",
+      dataAssinatura: formatDateBR(row.data_assinatura) || extra.dataAssinatura || "",
+      dataExtrato: formatDateBR(row.data_extrato) || extra.dataExtrato || "",
+      vigenciaInicio: formatDateBR(row.vigencia_inicio) || extra.vigenciaInicio || "",
+      vigenciaFim: formatDateBR(row.vigencia_fim) || extra.vigenciaFim || "",
+      vigencia: row.vigencia_atual || extra.vigencia || "",
+      linkPncp: row.link_pncp || extra.linkPncp || "",
+      fornecedorCnpj: fornecedor?.cnpj || extra.fornecedorCnpj || "",
+      fornecedorRazao: fornecedor?.razaoSocial || extra.fornecedorRazao || "",
+      fornecedorFantasia: fornecedor?.nomeFantasia || extra.fornecedorFantasia || "",
+      nomePdfAta: row.nome_pdf_ata || extra.nomePdfAta || "",
+      nomePdfExtrato: row.nome_pdf_extrato || extra.nomePdfExtrato || "",
+      pdfAta: anexosPorId.get(row.pdf_ata_anexo_id) || extra.pdfAta || null,
+      pdfExtrato: anexosPorId.get(row.pdf_extrato_anexo_id) || extra.pdfExtrato || null,
+      itens: filhos.itens || [],
+      publicacoesExtrato: filhos.publicacoes || [],
+      aditivos: filhos.aditivos || []
+    };
+  }
+
   async function replaceRows(client, table, foreignKey, parentId, rows) {
     const del = await client.from(table).delete().eq(foreignKey, parentId);
     if (del.error) throw del.error;
@@ -450,16 +761,25 @@
     ];
     await replaceRows(client, "processo_itens", "processo_id", processoId, itens);
 
-    const publicacoes = (processo.publicacoes || []).map(pub => ({
-      processo_id: processoId,
-      local_id: pub.id || null,
-      bloco: pub.bloco || "",
-      tipo: pub.tipo || "",
-      titulo: pub.titulo || pub.nome || "",
-      data_publicacao: parseDateBR(pub.data || pub.dataPublicacao),
-      link: pub.link || pub.url || "",
-      extra: pub
-    }));
+    const publicacoes = [];
+    for (const pub of processo.publicacoes || []) {
+      let anexoId = await salvarAnexoMeta(client, pub.anexo, `processo_publicacao:${processo.numero || ""}`);
+      for (const meio of Object.values(pub.meios || {})) {
+        const meioAnexoId = await salvarAnexoMeta(client, meio?.anexo, `processo_publicacao_meio:${processo.numero || ""}:${meio?.label || ""}`);
+        if (!anexoId && meioAnexoId) anexoId = meioAnexoId;
+      }
+      publicacoes.push({
+        processo_id: processoId,
+        local_id: pub.id || null,
+        bloco: pub.bloco || "",
+        tipo: pub.tipo || "",
+        titulo: pub.titulo || pub.nome || "",
+        data_publicacao: parseDateBR(pub.data || pub.dataPublicacao),
+        link: pub.link || pub.url || "",
+        anexo_id: anexoId,
+        extra: pub
+      });
+    }
     await replaceRows(client, "processo_publicacoes", "processo_id", processoId, publicacoes);
 
     await replaceAtas(client, processoId, processo.atasRegistroPreco || []);
@@ -520,32 +840,49 @@
         fornecedor_id: fornecedorId,
         nome_pdf_ata: ata.nomePdfAta || "",
         nome_pdf_extrato: ata.nomePdfExtrato || "",
+        pdf_ata_anexo_id: await salvarAnexoMeta(client, ata.pdfAta, `ata:${ata.numero || ""}/${ata.ano || ""}`),
+        pdf_extrato_anexo_id: await salvarAnexoMeta(client, ata.pdfExtrato, `ata_extrato:${ata.numero || ""}/${ata.ano || ""}`),
         extra: ata
       }).select("id").single();
       if (error) throw error;
       const ataId = data.id;
 
-      await replaceRows(client, "ata_itens", "ata_id", ataId, (ata.itens || []).map((item, index) => ({
+      await replaceRows(client, "ata_itens", "ata_id", ataId, (ata.itens || []).map((item, index) => {
+        const row = Array.isArray(item) ? item : [
+          item?.codigo || "",
+          item?.descricao || "",
+          item?.unidade || "",
+          item?.quantidade || "",
+          item?.valorUnitario || item?.valor_unitario || "",
+          item?.valorTotal || item?.valor_total || ""
+        ];
+        return {
         ata_id: ataId,
-        ordem: Number(item.item || item.ordem || index + 1) || index + 1,
-        codigo: item.codigo || "",
-        descricao: item.descricao || "",
-        unidade: item.unidade || "",
-        quantidade: parseNumber(item.quantidade),
-        valor_unitario: parseNumber(item.valorUnitario),
-        valor_total: parseNumber(item.valorTotal),
-        extra: item
-      })));
+        ordem: index,
+        codigo: row[0] || "",
+        descricao: row[1] || "",
+        unidade: row[2] || "",
+        quantidade: index === 0 ? null : parseNumber(row[3]),
+        valor_unitario: index === 0 ? null : parseNumber(row[4]),
+        valor_total: index === 0 ? null : parseNumber(row[5]),
+        extra: { raw: row, original: item || null }
+      };
+      }));
 
-      await replaceRows(client, "ata_publicacoes", "ata_id", ataId, (ata.publicacoesExtrato || []).map(pub => ({
-        ata_id: ataId,
-        local_id: pub.id || null,
-        tipo: pub.tipo || "",
-        titulo: pub.nome || pub.titulo || "",
-        data_publicacao: parseDateBR(pub.data),
-        link: pub.link || "",
-        extra: pub
-      })));
+      const publicacoesAta = [];
+      for (const pub of ata.publicacoesExtrato || []) {
+        publicacoesAta.push({
+          ata_id: ataId,
+          local_id: pub.id || null,
+          tipo: pub.tipo || "",
+          titulo: pub.nome || pub.titulo || "",
+          data_publicacao: parseDateBR(pub.data),
+          link: pub.link || "",
+          anexo_id: await salvarAnexoMeta(client, pub.pdf, `ata_publicacao:${ata.numero || ""}/${ata.ano || ""}`),
+          extra: pub
+        });
+      }
+      await replaceRows(client, "ata_publicacoes", "ata_id", ataId, publicacoesAta);
 
       for (const aditivo of ata.aditivos || []) {
         const saved = await client.from("ata_aditivos").insert({
@@ -557,26 +894,34 @@
           vigencia: aditivo.vigencia || "",
           data_assinatura: parseDateBR(aditivo.dataAssinatura),
           data_publicacao: parseDateBR(aditivo.publicacao),
+          anexo_id: await salvarAnexoMeta(client, aditivo.pdf, `ata_aditivo:${ata.numero || ""}/${ata.ano || ""}`),
           extra: aditivo
         }).select("id").single();
         if (saved.error) throw saved.error;
-        await replaceRows(client, "ata_aditivo_publicacoes", "aditivo_id", saved.data.id, (aditivo.publicacoesExtrato || []).map(pub => ({
-          aditivo_id: saved.data.id,
-          local_id: pub.id || null,
-          tipo: pub.tipo || "",
-          titulo: pub.nome || pub.titulo || "",
-          data_publicacao: parseDateBR(pub.data),
-          link: pub.link || "",
-          extra: pub
-        })));
+        const publicacoesAditivo = [];
+        for (const pub of aditivo.publicacoesExtrato || []) {
+          publicacoesAditivo.push({
+            aditivo_id: saved.data.id,
+            local_id: pub.id || null,
+            tipo: pub.tipo || "",
+            titulo: pub.nome || pub.titulo || "",
+            data_publicacao: parseDateBR(pub.data),
+            link: pub.link || "",
+            anexo_id: await salvarAnexoMeta(client, pub.pdf, `ata_aditivo_publicacao:${ata.numero || ""}/${ata.ano || ""}`),
+            extra: pub
+          });
+        }
+        await replaceRows(client, "ata_aditivo_publicacoes", "aditivo_id", saved.data.id, publicacoesAditivo);
       }
     }
   }
 
   async function saveTramitesGerais(numeroProcesso, tramites) {
     const client = requireClient();
+    await requireAuthenticatedUser();
     const processo = await client.from("processos").select("id").eq("numero", numeroProcesso).maybeSingle();
     if (processo.error) throw processo.error;
+    console.log("[SUPABASE][tramites_gerais][REPLACE][ANTES]", { numeroProcesso, tramites });
     const del = await client.from("tramites_gerais").delete().eq("numero_processo", numeroProcesso);
     if (del.error) throw del.error;
     const rows = (tramites || []).map(t => ({
@@ -593,9 +938,142 @@
       descricao_parecer: t.descricao || "",
       extra: t
     }));
-    if (!rows.length) return;
-    const ins = await client.from("tramites_gerais").insert(rows);
+    if (!rows.length) return [];
+    const ins = await client.from("tramites_gerais").insert(rows).select("*");
+    console.log("[SUPABASE][tramites_gerais][REPLACE][DEPOIS]", { data: ins.data, error: ins.error });
     if (ins.error) throw ins.error;
+    return ins.data || [];
+  }
+
+  async function listarTramitesGerais() {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    console.log("[SUPABASE][tramites_gerais][SELECT][ANTES]");
+    const { data, error } = await client
+      .from("tramites_gerais")
+      .select("*")
+      .order("numero_processo", { ascending: true })
+      .order("item", { ascending: true });
+    console.log("[SUPABASE][tramites_gerais][SELECT][DEPOIS]", { data, error });
+    if (error) throw error;
+    const mapa = {};
+    (data || []).forEach(row => {
+      const numero = row.numero_processo || "";
+      if (!numero) return;
+      if (!mapa[numero]) mapa[numero] = { atualizadoEm: "", tramites: [] };
+      mapa[numero].tramites.push({
+        ...(row.extra || {}),
+        item: row.item || "",
+        data: formatDateBR(row.data_tramite) || row.extra?.data || "",
+        hora: row.hora_tramite || row.extra?.hora || "",
+        recebido: row.recebido || row.extra?.recebido || "",
+        origem: row.origem || row.extra?.origem || "",
+        atual: row.setor_atual || row.extra?.atual || row.extra?.setorAtual || "",
+        setorAtual: row.setor_atual || row.extra?.setorAtual || row.extra?.atual || "",
+        relator: row.relator || row.extra?.relator || "",
+        parecer: row.parecer || row.extra?.parecer || "",
+        descricao: row.descricao_parecer || row.extra?.descricao || ""
+      });
+      mapa[numero].atualizadoEm = row.updated_at || mapa[numero].atualizadoEm;
+    });
+    return mapa;
+  }
+
+  function tramiteInternoPayload(tramite, processoId = null) {
+    return {
+      local_id: tramite.id || localId("tramite"),
+      processo_id: processoId,
+      numero_processo: tramite.numero || tramite.numeroProcesso || "",
+      entrada: String(tramite.entrada || ""),
+      data_entrada: parseDateBR(tramite.dataEntrada),
+      motivo: tramite.motivo || "",
+      secretaria: tramite.secretaria || "",
+      objeto: tramite.objeto || "",
+      responsavel: tramite.responsavel || "",
+      tipo: tramite.tipo || tramite.tipoTramite || "",
+      status: tramite.status || "",
+      destino: tramite.destino || "",
+      historico: Array.isArray(tramite.historico) ? tramite.historico : [],
+      extra: tramite
+    };
+  }
+
+  function tramiteInternoFromRow(row) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      supabaseId: row.id,
+      numero: row.numero_processo || extra.numero || extra.numeroProcesso || "",
+      entrada: row.entrada || extra.entrada || "",
+      dataEntrada: row.data_entrada || extra.dataEntrada || "",
+      motivo: row.motivo || extra.motivo || "",
+      secretaria: row.secretaria || extra.secretaria || "",
+      objeto: row.objeto || extra.objeto || "",
+      responsavel: row.responsavel || extra.responsavel || "",
+      tipo: row.tipo || extra.tipo || extra.tipoTramite || "",
+      status: row.status || extra.status || "",
+      destino: row.destino || extra.destino || "",
+      historico: Array.isArray(row.historico) ? row.historico : (Array.isArray(extra.historico) ? extra.historico : [])
+    };
+  }
+
+  async function listarTramitesInternos() {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    console.log("[SUPABASE][tramites_internos][SELECT][ANTES]");
+    const { data, error } = await client
+      .from("tramites_internos")
+      .select("*")
+      .order("created_at", { ascending: false });
+    console.log("[SUPABASE][tramites_internos][SELECT][DEPOIS]", { data, error });
+    if (error) throw error;
+    return (data || []).map(tramiteInternoFromRow);
+  }
+
+  async function salvarTramitesInternos(tramites) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const processos = await client.from("processos").select("id, numero");
+    if (processos.error) throw processos.error;
+    const processoPorNumero = new Map((processos.data || []).map(p => [p.numero, p.id]));
+    const rows = (tramites || []).map(t => tramiteInternoPayload(t, processoPorNumero.get(t.numero || t.numeroProcesso) || null));
+    console.log("[SUPABASE][tramites_internos][REPLACE][ANTES]", { rows });
+    const del = await client.from("tramites_internos").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    if (del.error) throw del.error;
+    if (!rows.length) return [];
+    const ins = await client.from("tramites_internos").insert(rows).select("*");
+    console.log("[SUPABASE][tramites_internos][REPLACE][DEPOIS]", { data: ins.data, error: ins.error });
+    if (ins.error) throw ins.error;
+    return (ins.data || []).map(tramiteInternoFromRow);
+  }
+
+  async function obterAppSetting(chave, fallback = null) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const { data, error } = await client
+      .from("app_settings")
+      .select("valor")
+      .eq("chave", chave)
+      .maybeSingle();
+    console.log("[SUPABASE][app_settings][SELECT_RESULT]", { chave, data, error });
+    if (error) throw error;
+    return data?.valor ?? fallback;
+  }
+
+  async function salvarAppSetting(chave, valor) {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+    const payload = { chave, valor: valor || {} };
+    console.log("[SUPABASE][app_settings][UPSERT]", { payload });
+    const { data, error } = await client
+      .from("app_settings")
+      .upsert(payload, { onConflict: "chave" })
+      .select("*")
+      .single();
+    console.log("[SUPABASE][app_settings][UPSERT_RESULT]", { data, error });
+    if (error) throw error;
+    return data?.valor ?? valor;
   }
 
   async function loadProcessosResumo() {
@@ -640,6 +1118,59 @@
     };
   }
 
+  function agruparPor(rows, key) {
+    const mapa = new Map();
+    (rows || []).forEach(row => {
+      const valor = row?.[key];
+      if (!valor) return;
+      if (!mapa.has(valor)) mapa.set(valor, []);
+      mapa.get(valor).push(row);
+    });
+    return mapa;
+  }
+
+  async function selecionarPorIds(client, tabela, coluna, ids, order = null) {
+    const valores = Array.from(new Set(ids || [])).filter(Boolean);
+    if (!valores.length) return [];
+    let query = client.from(tabela).select("*").in(coluna, valores);
+    if (order) query = query.order(order, { ascending: true });
+    const { data, error } = await query;
+    console.log(`[SUPABASE][${tabela}][SELECT_RESULT]`, { data, error });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function carregarAnexosPorIds(client, ids) {
+    const rows = await selecionarPorIds(client, "anexos", "id", ids);
+    const mapa = new Map();
+    rows.forEach(row => mapa.set(row.id, anexoFromRow(row)));
+    return mapa;
+  }
+
+  async function carregarFornecedoresPorIds(client, ids) {
+    const rows = await selecionarPorIds(client, "fornecedores", "id", ids);
+    const mapa = new Map();
+    rows.forEach(row => mapa.set(row.id, fornecedorFromRow(row, [])));
+    return mapa;
+  }
+
+  function aplicarBlocosProcesso(processo, blocos) {
+    (blocos || []).forEach(row => {
+      const dados = row.dados && typeof row.dados === "object" ? row.dados : {};
+      if (row.bloco === "fases") {
+        processo.fasesAtivas = Array.isArray(dados.fasesAtivas) ? dados.fasesAtivas : processo.fasesAtivas;
+        processo.etapasConcluidas = dados.etapasConcluidas || processo.etapasConcluidas || {};
+        return;
+      }
+      if (row.bloco === "resultado" || row.bloco === "homologacao") {
+        if (dados.resultadoValorHomologado !== undefined) processo.resultadoValorHomologado = dados.resultadoValorHomologado;
+        if (Array.isArray(dados.resultadoItens) && !Array.isArray(processo.resultadoItens)) processo.resultadoItens = dados.resultadoItens;
+        return;
+      }
+      Object.assign(processo, dados);
+    });
+  }
+
   async function loadProcessosCompletos() {
     const client = requireClient();
     const { data, error } = await client
@@ -647,7 +1178,82 @@
       .select("*")
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return (data || []).map(processoFromRow);
+    const processosRows = data || [];
+    const processos = processosRows.map(processoFromRow);
+    const processoIds = processosRows.map(row => row.id);
+    if (!processoIds.length) return processos;
+
+    console.log("[SUPABASE][processos][LOAD_COMPLETO][AUXILIARES]", { processoIds });
+    const [blocos, itens, publicacoes, atas] = await Promise.all([
+      selecionarPorIds(client, "processo_blocos", "processo_id", processoIds),
+      selecionarPorIds(client, "processo_itens", "processo_id", processoIds, "ordem"),
+      selecionarPorIds(client, "processo_publicacoes", "processo_id", processoIds),
+      selecionarPorIds(client, "atas_registro_preco", "processo_id", processoIds)
+    ]);
+
+    const ataIds = atas.map(row => row.id);
+    const [ataItens, ataPublicacoes, ataAditivos] = await Promise.all([
+      selecionarPorIds(client, "ata_itens", "ata_id", ataIds, "ordem"),
+      selecionarPorIds(client, "ata_publicacoes", "ata_id", ataIds),
+      selecionarPorIds(client, "ata_aditivos", "ata_id", ataIds)
+    ]);
+    const aditivoIds = ataAditivos.map(row => row.id);
+    const aditivoPublicacoes = await selecionarPorIds(client, "ata_aditivo_publicacoes", "aditivo_id", aditivoIds);
+
+    const anexoIds = [
+      ...publicacoes.map(row => row.anexo_id),
+      ...atas.flatMap(row => [row.pdf_ata_anexo_id, row.pdf_extrato_anexo_id]),
+      ...ataPublicacoes.map(row => row.anexo_id),
+      ...ataAditivos.map(row => row.anexo_id),
+      ...aditivoPublicacoes.map(row => row.anexo_id)
+    ].filter(Boolean);
+    const fornecedoresIds = atas.map(row => row.fornecedor_id).filter(Boolean);
+    const [anexosPorId, fornecedoresPorId] = await Promise.all([
+      carregarAnexosPorIds(client, anexoIds),
+      carregarFornecedoresPorIds(client, fornecedoresIds)
+    ]);
+
+    const blocosPorProcesso = agruparPor(blocos, "processo_id");
+    const itensPorProcesso = agruparPor(itens, "processo_id");
+    const publicacoesPorProcesso = agruparPor(publicacoes, "processo_id");
+    const atasPorProcesso = agruparPor(atas, "processo_id");
+    const ataItensPorAta = agruparPor(ataItens, "ata_id");
+    const ataPublicacoesPorAta = agruparPor(ataPublicacoes, "ata_id");
+    const aditivosPorAta = agruparPor(ataAditivos, "ata_id");
+    const publicacoesPorAditivo = agruparPor(aditivoPublicacoes, "aditivo_id");
+
+    processos.forEach(processo => {
+      const processoRow = processosRows.find(row => row.local_id === processo.id || row.id === processo.supabaseId);
+      if (!processoRow) return;
+      aplicarBlocosProcesso(processo, blocosPorProcesso.get(processoRow.id) || []);
+
+      const itensProcesso = itensPorProcesso.get(processoRow.id) || [];
+      const porOrigem = agruparPor(itensProcesso, "origem");
+      if (porOrigem.has("processo")) processo.itensProcesso = porOrigem.get("processo").map(itemFromRow);
+      if (porOrigem.has("cotacao")) processo.cotItens = porOrigem.get("cotacao").map(itemFromRow);
+      if (porOrigem.has("resultado")) processo.resultadoItens = porOrigem.get("resultado").map(itemFromRow);
+
+      const pubs = publicacoesPorProcesso.get(processoRow.id) || [];
+      if (pubs.length) processo.publicacoes = pubs.map(row => publicacaoProcessoFromRow(row, anexosPorId));
+
+      const atasDoProcesso = atasPorProcesso.get(processoRow.id) || [];
+      if (atasDoProcesso.length) {
+        processo.atasRegistroPreco = atasDoProcesso.map(ataRow => {
+          const aditivos = (aditivosPorAta.get(ataRow.id) || []).map(aditivoRow => aditivoAtaFromRow(
+            aditivoRow,
+            (publicacoesPorAditivo.get(aditivoRow.id) || []).map(pub => publicacaoAtaFromRow(pub, anexosPorId)),
+            anexosPorId
+          ));
+          return ataRegistroPrecoFromRow(ataRow, {
+            itens: (ataItensPorAta.get(ataRow.id) || []).map(tableItemFromRow),
+            publicacoes: (ataPublicacoesPorAta.get(ataRow.id) || []).map(pub => publicacaoAtaFromRow(pub, anexosPorId)),
+            aditivos
+          }, anexosPorId, fornecedoresPorId);
+        });
+      }
+    });
+
+    return processos;
   }
 
   async function deleteProcessoCompleto(localId) {
@@ -686,6 +1292,224 @@
     return ids.length;
   }
 
+  function irpItemPayload(irpId, item, index) {
+    const row = Array.isArray(item) ? item : [
+      item?.codigo || "",
+      item?.descricao || "",
+      item?.unidade || "",
+      item?.quantidade || "",
+      item?.valorUnitario || item?.valor_unitario || "",
+      item?.valorTotal || item?.valor_total || ""
+    ];
+    return {
+      irp_id: irpId,
+      ordem: index,
+      codigo: row[0] || "",
+      descricao: row[1] || "",
+      unidade: row[2] || "",
+      quantidade: index === 0 ? null : parseNumber(row[3]),
+      valor_unitario: index === 0 ? null : parseNumber(row[4]),
+      valor_total: index === 0 ? null : parseNumber(row[5]),
+      extra: {
+        raw: row,
+        original: item || null
+      }
+    };
+  }
+
+  function irpItemFromRow(row = {}) {
+    if (Array.isArray(row.extra?.raw)) return row.extra.raw;
+    return [
+      row.codigo || "",
+      row.descricao || "",
+      row.unidade || "",
+      row.quantidade ?? "",
+      row.valor_unitario ?? "",
+      row.valor_total ?? ""
+    ];
+  }
+
+  function irpRegistroPrecoPayload(irp = {}) {
+    const { itens, ...extra } = irp;
+    return {
+      local_id: localId("irp", irp.id || `${irp.numero || ""}_${irp.ano || ""}`),
+      numero: irp.numero || "",
+      ano: irp.ano || "",
+      objeto: irp.objeto || "",
+      secretaria: irp.secretaria || "",
+      extra
+    };
+  }
+
+  function irpRegistroPrecoFromRow(row = {}, itensRelacionados = []) {
+    const extra = row.extra || {};
+    const itens = Array.isArray(itensRelacionados) && itensRelacionados.length
+      ? itensRelacionados.map(irpItemFromRow)
+      : (Array.isArray(extra.itens) ? extra.itens : []);
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      supabaseId: row.id,
+      numero: row.numero || extra.numero || "",
+      ano: row.ano || extra.ano || "",
+      objeto: row.objeto || extra.objeto || "",
+      secretaria: row.secretaria || extra.secretaria || "",
+      itens,
+      criadoEm: extra.criadoEm || formatDateTimeBR(row.created_at),
+      atualizadoEm: extra.atualizadoEm || formatDateTimeBR(row.updated_at)
+    };
+  }
+
+  async function listarItensIrpPorIds(irpIds) {
+    const ids = Array.from(new Set(irpIds || [])).filter(Boolean);
+    if (!ids.length) return new Map();
+    console.log("[SUPABASE][irp_itens][SELECT][ANTES]", { irpIds: ids });
+    const result = await requireClient()
+      .from("irp_itens")
+      .select("*")
+      .in("irp_id", ids)
+      .order("ordem", { ascending: true });
+    console.log("[SUPABASE][irp_itens][SELECT][DEPOIS]", {
+      data: result.data,
+      error: result.error
+    });
+    if (result.error) throw result.error;
+    const mapa = new Map();
+    (result.data || []).forEach(row => {
+      if (!mapa.has(row.irp_id)) mapa.set(row.irp_id, []);
+      mapa.get(row.irp_id).push(row);
+    });
+    return mapa;
+  }
+
+  async function substituirItensIrp(irpId, itens = []) {
+    console.log("[SUPABASE][irp_itens][REPLACE][ANTES]", { irpId, itens });
+    const del = await requireClient()
+      .from("irp_itens")
+      .delete()
+      .eq("irp_id", irpId);
+    if (del.error) throw del.error;
+
+    const payload = (Array.isArray(itens) ? itens : [])
+      .map((item, index) => irpItemPayload(irpId, item, index))
+      .filter(item => {
+        const raw = item.extra?.raw || [];
+        return raw.some(cell => String(cell ?? "").trim());
+      });
+
+    if (payload.length) {
+      const ins = await requireClient()
+        .from("irp_itens")
+        .insert(payload)
+        .select("*");
+      console.log("[SUPABASE][irp_itens][REPLACE][DEPOIS]", {
+        data: ins.data,
+        error: ins.error
+      });
+      if (ins.error) throw ins.error;
+    } else {
+      console.log("[SUPABASE][irp_itens][REPLACE][DEPOIS]", {
+        data: [],
+        error: null
+      });
+    }
+
+    const confirmacao = await requireClient()
+      .from("irp_itens")
+      .select("*")
+      .eq("irp_id", irpId)
+      .order("ordem", { ascending: true });
+    console.log("[SUPABASE][irp_itens][REPLACE][CONFIRMACAO]", {
+      data: confirmacao.data,
+      error: confirmacao.error
+    });
+    if (confirmacao.error) throw confirmacao.error;
+    return confirmacao.data || [];
+  }
+
+  async function listarIrpsRegistroPreco() {
+    await requireAuthenticatedUser();
+    console.log("[SUPABASE][irps_registro_preco][SELECT][ANTES]");
+    const result = await requireClient()
+      .from("irps_registro_preco")
+      .select("*")
+      .order("ano", { ascending: false })
+      .order("numero", { ascending: true });
+    console.log("[SUPABASE][irps_registro_preco][SELECT][DEPOIS]", {
+      data: result.data,
+      error: result.error
+    });
+    if (result.error) throw result.error;
+    const itensPorIrp = await listarItensIrpPorIds((result.data || []).map(row => row.id));
+    return (result.data || []).map(row => irpRegistroPrecoFromRow(row, itensPorIrp.get(row.id) || []));
+  }
+
+  async function salvarIrpRegistroPreco(irp) {
+    await requireAuthenticatedUser();
+    const payload = irpRegistroPrecoPayload(irp);
+    console.log("[SUPABASE][irps_registro_preco][UPSERT][ANTES]", payload);
+    const result = await requireClient()
+      .from("irps_registro_preco")
+      .upsert(payload, { onConflict: "local_id" })
+      .select("*")
+      .single();
+    console.log("[SUPABASE][irps_registro_preco][UPSERT][DEPOIS]", {
+      data: result.data,
+      error: result.error
+    });
+    if (result.error) throw result.error;
+    const itensConfirmados = await substituirItensIrp(result.data.id, irp.itens || []);
+
+    const check = await requireClient()
+      .from("irps_registro_preco")
+      .select("*")
+      .eq("id", result.data.id)
+      .single();
+    console.log("[SUPABASE][irps_registro_preco][UPSERT][CONFIRMACAO]", {
+      data: check.data,
+      error: check.error
+    });
+    if (check.error) throw check.error;
+    return irpRegistroPrecoFromRow(check.data, itensConfirmados);
+  }
+
+  async function excluirIrpRegistroPreco(localIdIrp) {
+    await requireAuthenticatedUser();
+    console.log("[SUPABASE][irps_registro_preco][DELETE][ANTES]", { local_id: localIdIrp });
+    const alvo = await requireClient()
+      .from("irps_registro_preco")
+      .select("id")
+      .eq("local_id", localIdIrp)
+      .maybeSingle();
+    if (alvo.error) throw alvo.error;
+    if (!alvo.data?.id) return false;
+
+    const deleted = await requireClient()
+      .from("irps_registro_preco")
+      .delete()
+      .eq("id", alvo.data.id)
+      .select("id")
+      .single();
+    console.log("[SUPABASE][irps_registro_preco][DELETE][DEPOIS]", {
+      data: deleted.data,
+      error: deleted.error
+    });
+    if (deleted.error) throw deleted.error;
+
+    const check = await requireClient()
+      .from("irps_registro_preco")
+      .select("id")
+      .eq("id", alvo.data.id)
+      .maybeSingle();
+    console.log("[SUPABASE][irps_registro_preco][DELETE][CONFIRMACAO]", {
+      data: check.data,
+      error: check.error
+    });
+    if (check.error) throw check.error;
+    if (check.data) throw new Error("Nao foi possivel confirmar a exclusao da IRP no Supabase.");
+    return true;
+  }
+
   window.AppDatabase = {
     client: requireClient,
     requireAuthenticatedUser,
@@ -694,6 +1518,12 @@
     listarSecretarias,
     salvarSecretaria,
     excluirSecretaria,
+    listarTiposProtocolo,
+    salvarTipoProtocolo,
+    excluirTipoProtocolo,
+    listarAssuntosProtocolo,
+    salvarAssuntoProtocolo,
+    excluirAssuntoProtocolo,
     listarFornecedores,
     listarPessoasFornecedor,
     salvarFornecedor,
@@ -702,7 +1532,15 @@
     saveProcessoCompleto,
     deleteProcessoCompleto,
     deleteProcessosCompletos,
+    listarIrpsRegistroPreco,
+    salvarIrpRegistroPreco,
+    excluirIrpRegistroPreco,
     saveTramitesGerais,
+    listarTramitesGerais,
+    listarTramitesInternos,
+    salvarTramitesInternos,
+    obterAppSetting,
+    salvarAppSetting,
     loadProcessosResumo,
     loadProcessosCompletos
   };

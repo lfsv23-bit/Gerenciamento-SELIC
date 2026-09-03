@@ -122,11 +122,25 @@ Os dados locais continuam no navegador. Nada e apagado.
 5. Escolha a branch principal e a pasta raiz.
 6. Salve. O GitHub vai gerar um link do Pages.
 
+## Estado atual da persistencia
+
+Com o Supabase configurado e o usuario autenticado, as telas principais passam a usar o banco como fonte principal para:
+
+- processos, blocos/fases, itens, publicacoes e dados complementares;
+- fornecedores e pessoas vinculadas;
+- IRPs e itens da IRP;
+- atas de registro de preco, itens, publicacoes/extratos, aditivos e publicacoes dos aditivos;
+- tramites internos;
+- tramites gerais importados por TXT;
+- listas auxiliares e configuracoes simples.
+
+O `localStorage` continua existindo apenas como origem de migracao, backup temporario e fallback quando o Supabase nao estiver configurado. Depois que o Supabase estiver configurado, novos cadastros, edicoes e exclusoes devem ser conferidos nas tabelas do banco.
+
+Os PDFs/anexos fisicos ainda permanecem no IndexedDB do navegador. O Supabase recebe os metadados na tabela `anexos`, mas a migracao dos arquivos para Supabase Storage ficara para uma etapa propria.
+
 ## Proximas etapas tecnicas
 
 1. Testar a migracao em uma copia do projeto Supabase.
-2. Validar processos, fornecedores, atas, aditivos e tramites importados.
-3. Substituir `loadData()` e `saveData()` por chamadas assicronas do `js/database.js`.
-4. Criar feedback visual de carregamento/salvamento nas telas principais.
-5. Migrar PDFs/anexos do IndexedDB para Supabase Storage.
-6. Manter o backup JSON como copia de seguranca.
+2. Validar processos, fornecedores, atas, aditivos, IRPs e tramites importados.
+3. Migrar PDFs/anexos do IndexedDB para Supabase Storage.
+4. Manter o backup JSON como copia de seguranca.

@@ -31,72 +31,72 @@
     }
   }
 
-  async function migrarListasConfiguracao(client, tipos, assuntos, mapaSecretarias) {
-    for (const tipo of tipos || []) {
-      const res = await client.from("tipos_protocolo").upsert({
-        nome: tipo.nome || "",
-        ativo: tipo.ativo !== false,
-        padrao: !!tipo.padrao
-      }, { onConflict: "nome" });
-      if (res.error) throw res.error;
-    }
-
-    for (const assunto of assuntos || []) {
-      if (!assunto?.tipo || !assunto?.nome) continue;
-      const res = await client.from("assuntos_protocolo").upsert({
-        tipo_nome: assunto.tipo,
-        nome: assunto.nome,
-        ativo: assunto.ativo !== false,
-        padrao: !!assunto.padrao
-      }, { onConflict: "tipo_nome,nome" });
-      if (res.error) throw res.error;
-    }
-
-    if (mapaSecretarias && Object.keys(mapaSecretarias).length) {
-      const res = await client.from("app_settings").upsert({
-        chave: "mapaInteressadosSecretarias",
-        valor: mapaSecretarias
-      }, { onConflict: "chave" });
-      if (res.error) throw res.error;
+  async function migrarTiposProtocolo(db, tipos) {
+    const padrao = [
+      "PROCESSO LICITATÓRIO",
+      "SOLICITAÇÃO",
+      "MANIFESTAÇÃO DE INTERESSE",
+      "COMUNICAÇÃO INTERNA",
+      "OFÍCIO"
+    ].map(nome => ({ nome, ativo: true, padrao: true }));
+    const mapa = new Map();
+    [...padrao, ...(tipos || [])].forEach(tipo => {
+      const nome = String(tipo?.nome || "").replace(/\s+/g, " ").trim().toUpperCase();
+      if (nome) mapa.set(nome, { ...tipo, nome, ativo: tipo.ativo !== false });
+    });
+    for (const tipo of mapa.values()) {
+      await db.salvarTipoProtocolo(tipo);
     }
   }
 
-  async function migrarIrps(client, irps) {
-    for (const irp of irps || []) {
-      const saved = await client.from("irps_registro_preco").upsert({
-        local_id: irp.id || `${irp.numero || ""}_${irp.ano || ""}`,
-        numero: irp.numero || "",
-        ano: irp.ano || "",
-        objeto: irp.objeto || "",
-        secretaria: irp.secretaria || "",
-        extra: irp
-      }, { onConflict: "local_id" }).select("id").single();
-      if (saved.error) throw saved.error;
+  async function migrarAssuntosProtocolo(db, assuntos) {
+    const padrao = [];
+    const padroesPorTipo = {
+      "PROCESSO LICITATÓRIO": [
+        "AQUISIÇÃO DE BENS",
+        "CONTRATA MAIS BRASIL",
+        "CREDENCIAMENTO",
+        "PRESTAÇÃO DE SERVIÇOS",
+        "OBRAS E SERVIÇOS DE ENGENHARIA",
+        "LOCAÇÃO"
+      ],
+      "SOLICITAÇÃO": [
+        "CADASTRO DE PRODUTO",
+        "CADASTRO DE USUÁRIO NO SISTEMA",
+        "REEQUILÍBRIO ECONÔMICO-FINANCEIRO"
+      ]
+    };
+    Object.entries(padroesPorTipo).forEach(([tipo, nomes]) => {
+      nomes.forEach(nome => padrao.push({ tipo, nome, ativo: true, padrao: true }));
+    });
 
-      const del = await client.from("irp_itens").delete().eq("irp_id", saved.data.id);
-      if (del.error) throw del.error;
-      const itens = (irp.itens || []).map((item, index) => ({
-        irp_id: saved.data.id,
-        ordem: Number(item.item || item.ordem || index + 1) || index + 1,
-        codigo: item.codigo || "",
-        descricao: item.descricao || "",
-        unidade: item.unidade || "",
-        quantidade: window.AppDatabase.parseNumber(item.quantidade),
-        valor_unitario: window.AppDatabase.parseNumber(item.valorUnitario),
-        valor_total: window.AppDatabase.parseNumber(item.valorTotal),
-        extra: item
-      }));
-      if (itens.length) {
-        const ins = await client.from("irp_itens").insert(itens);
-        if (ins.error) throw ins.error;
-      }
+    const mapa = new Map();
+    [...padrao, ...(assuntos || [])].forEach(assunto => {
+      const tipo = String(assunto?.tipo || assunto?.tipoProtocolo || "").replace(/\s+/g, " ").trim().toUpperCase();
+      const nome = String(assunto?.nome || "").replace(/\s+/g, " ").trim().toUpperCase();
+      if (tipo && nome) mapa.set(`${tipo}::${nome}`, { ...assunto, tipo, nome, ativo: assunto.ativo !== false });
+    });
+
+    for (const assunto of mapa.values()) {
+      await db.salvarAssuntoProtocolo(assunto);
+    }
+  }
+
+  async function migrarListasConfiguracao(db, mapaSecretarias) {
+    if (mapaSecretarias && Object.keys(mapaSecretarias).length) {
+      await db.salvarAppSetting("mapaInteressadosSecretarias", mapaSecretarias);
+    }
+  }
+
+  async function migrarIrps(db, irps) {
+    for (const irp of irps || []) {
+      await db.salvarIrpRegistroPreco(irp);
     }
   }
 
   async function migrarTudo() {
     if (!window.AppDatabase) throw new Error("js/database.js nao foi carregado.");
     const db = window.AppDatabase;
-    const client = db.client();
 
     const processos = readLocal("processosLicitatorios", []);
     const tramitesInternos = readLocal("tramitesProcessos", []);
@@ -108,43 +108,31 @@
     const mapaSecretarias = readLocal("mapaInteressadosSecretarias", {});
 
     setStatus("Migrando configuracoes...", "info");
-    await migrarListasConfiguracao(client, tipos, assuntos, mapaSecretarias);
+    await migrarListasConfiguracao(db, mapaSecretarias);
 
     setStatus("Migrando secretarias...", "info");
     await migrarSecretarias(db);
+
+    setStatus("Migrando tipos de protocolo...", "info");
+    await migrarTiposProtocolo(db, tipos);
+
+    setStatus("Migrando assuntos de protocolo...", "info");
+    await migrarAssuntosProtocolo(db, assuntos);
 
     setStatus("Migrando fornecedores...", "info");
     await migrarFornecedores(db, fornecedores);
 
     setStatus("Migrando IRPs...", "info");
-    await migrarIrps(client, irps);
+    await migrarIrps(db, irps);
 
     for (let i = 0; i < processos.length; i++) {
       setStatus(`Migrando processos ${i + 1}/${processos.length}...`, "info");
       await db.saveProcessoCompleto(processos[i]);
     }
 
-    const rowsInternos = tramitesInternos.map(t => ({
-      local_id: t.id || null,
-      numero_processo: t.numero || t.numeroProcesso || "",
-      entrada: t.entrada || "",
-      data_entrada: db.parseDateBR(t.dataEntrada),
-      motivo: t.motivo || "",
-      secretaria: t.secretaria || "",
-      objeto: t.objeto || "",
-      responsavel: t.responsavel || "",
-      tipo: t.tipo || "",
-      status: t.status || "",
-      destino: t.destino || "",
-      historico: t.historico || [],
-      extra: t
-    }));
-    if (rowsInternos.length) {
+    if (tramitesInternos.length) {
       setStatus("Migrando tramites internos...", "info");
-      const del = await client.from("tramites_internos").delete().neq("id", "00000000-0000-0000-0000-000000000000");
-      if (del.error) throw del.error;
-      const ins = await client.from("tramites_internos").insert(rowsInternos);
-      if (ins.error) throw ins.error;
+      await db.salvarTramitesInternos(tramitesInternos);
     }
 
     const entradasGerais = Object.entries(tramitesGerais);
