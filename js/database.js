@@ -1,6 +1,6 @@
 // Camada inicial de acesso ao Supabase.
-// Esta camada ainda nao substitui o localStorage automaticamente; ela prepara
-// a leitura/escrita online para a migracao gradual do sistema.
+// Esta camada centraliza o acesso online e evita espalhar chamadas Supabase
+// pelos modulos da interface.
 
 (() => {
   const MONEY_FIELDS = new Set(["valorEstimado", "resultadoValorHomologado"]);
@@ -49,6 +49,14 @@
     const match = String(value || "").match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
     if (!match) return null;
     return `${String(match[1]).padStart(2, "0")}:${match[2]}:${match[3] || "00"}`;
+  }
+
+  function formatDateBR(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) return raw;
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : raw;
   }
 
   function localId(prefix, fallback = "") {
@@ -178,7 +186,15 @@
     await replaceRows(client, "processo_publicacoes", "processo_id", processoId, publicacoes);
 
     await replaceAtas(client, processoId, processo.atasRegistroPreco || []);
-    return processoId;
+
+    const verificado = await client
+      .from("processos")
+      .select("*")
+      .eq("id", processoId)
+      .single();
+    if (verificado.error) throw verificado.error;
+    if (!verificado.data?.id) throw new Error("Nao foi possivel confirmar a gravacao do processo no Supabase.");
+    return processoFromRow(verificado.data);
   }
 
   function itemRow(processoId, item, index, origem) {
@@ -315,13 +331,93 @@
     return data || [];
   }
 
+  function processoFromRow(row) {
+    const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
+    return {
+      ...extra,
+      id: row.local_id || extra.id || row.id,
+      supabaseId: row.id,
+      numero: row.numero || extra.numero || "",
+      dataCriacao: formatDateBR(row.data_criacao) || extra.dataCriacao || "",
+      objeto: row.objeto || extra.objeto || "",
+      descricaoCompleta: row.descricao_completa || extra.descricaoCompleta || "",
+      secretaria: row.secretaria || extra.secretaria || "",
+      interessadoOriginal: row.interessado_original || extra.interessadoOriginal || "",
+      tipoProtocolo: row.tipo_protocolo || extra.tipoProtocolo || "",
+      naturezaProcesso: row.natureza_processo || extra.naturezaProcesso || "",
+      assuntoProtocolo: row.assunto_protocolo || extra.assuntoProtocolo || "",
+      registroPrecos: row.registro_precos || extra.registroPrecos || "",
+      tipoRegistroPreco: row.tipo_registro_preco || extra.tipoRegistroPreco || "",
+      tipoAdesaoRegistro: row.tipo_adesao_registro || extra.tipoAdesaoRegistro || "",
+      processoGerador: row.processo_gerador_local_id || extra.processoGerador || "",
+      ataRegistroPrecoId: row.ata_registro_preco_local_id || extra.ataRegistroPrecoId || "",
+      modalidadeLicitacao: row.modalidade_licitacao || extra.modalidadeLicitacao || "",
+      tipoLicitacao: row.tipo_licitacao || extra.tipoLicitacao || "",
+      situacao: row.situacao || extra.situacao || "",
+      fase: row.fase || extra.fase || "",
+      volumes: row.volumes || extra.volumes || "",
+      observacao: row.observacao || extra.observacao || "",
+      valorEstimado: row.valor_estimado ?? extra.valorEstimado ?? null,
+      resultadoValorHomologado: row.valor_homologado ?? extra.resultadoValorHomologado ?? "",
+      novo: false
+    };
+  }
+
+  async function loadProcessosCompletos() {
+    const client = requireClient();
+    const { data, error } = await client
+      .from("processos")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(processoFromRow);
+  }
+
+  async function deleteProcessoCompleto(localId) {
+    const client = requireClient();
+    const alvo = await client
+      .from("processos")
+      .select("id, local_id, numero")
+      .eq("local_id", localId)
+      .single();
+    if (alvo.error) throw alvo.error;
+
+    const deleted = await client
+      .from("processos")
+      .delete()
+      .eq("id", alvo.data.id)
+      .select("id")
+      .single();
+    if (deleted.error) throw deleted.error;
+
+    const check = await client
+      .from("processos")
+      .select("id")
+      .eq("id", alvo.data.id)
+      .maybeSingle();
+    if (check.error) throw check.error;
+    if (check.data) throw new Error("Nao foi possivel confirmar a exclusao do processo no Supabase.");
+    return true;
+  }
+
+  async function deleteProcessosCompletos(localIds) {
+    const ids = Array.from(new Set(localIds || [])).filter(Boolean);
+    for (const id of ids) {
+      await deleteProcessoCompleto(id);
+    }
+    return ids.length;
+  }
+
   window.AppDatabase = {
     client: requireClient,
     parseDateBR,
     parseNumber,
     upsertFornecedor,
     saveProcessoCompleto,
+    deleteProcessoCompleto,
+    deleteProcessosCompletos,
     saveTramitesGerais,
-    loadProcessosResumo
+    loadProcessosResumo,
+    loadProcessosCompletos
   };
 })();

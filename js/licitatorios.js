@@ -40,6 +40,9 @@
 
   /* ---------- Storage helpers ---------- */
   function loadData() {
+    if (window.__processosLicitatoriosFonteSupabase && Array.isArray(window.__processosLicitatoriosData)) {
+      return window.__processosLicitatoriosData;
+    }
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
     catch (e) { console.error('Erro ao carregar dados:', e); return []; }
   }
@@ -3810,11 +3813,89 @@ maximumFractionDigits:2
       fase: container.querySelector('#view_fase')
     };
 
+    const supabaseProcessosDisponivel = () => !!(window.AppDatabase && window.isSupabaseConfigured?.());
+
     // dados principais
-    let data = loadData();
+    let data = supabaseProcessosDisponivel() ? [] : loadData();
+    window.__processosLicitatoriosData = data;
     let filtered = data.slice();
     let itensProcesso = [];
     const selectedProcessos = new Set();
+
+    function erroSupabaseVisivel(acao, error) {
+      console.error(`Erro ao ${acao} processo no Supabase:`, error);
+      showToast(`Erro ao ${acao} processo no Supabase. Veja o console.`);
+      alert(`Não foi possível ${acao} o processo no Supabase.\n\nDetalhe: ${error?.message || error}`);
+    }
+
+    async function carregarProcessosSupabase() {
+      if (!supabaseProcessosDisponivel()) {
+        renderTable();
+        return;
+      }
+      try {
+        const processos = await window.AppDatabase.loadProcessosCompletos();
+        data = Array.isArray(processos) ? processos : [];
+        window.__processosLicitatoriosFonteSupabase = true;
+        window.__processosLicitatoriosData = data;
+        filtered = data.slice();
+        selectedProcessos.clear();
+        renderTable();
+        showToast('Processos carregados do Supabase.');
+      } catch (error) {
+        erroSupabaseVisivel('carregar', error);
+        renderTable();
+      }
+    }
+
+    async function salvarProcessoPrincipal(item, idx) {
+      if (!supabaseProcessosDisponivel()) {
+        if (idx >= 0) data[idx] = item; else data.unshift(item);
+        window.__processosLicitatoriosData = data;
+        saveData(data);
+        return item;
+      }
+
+      const salvo = await window.AppDatabase.saveProcessoCompleto(item);
+      if (!salvo?.id) {
+        throw new Error('O Supabase não retornou confirmação do processo salvo.');
+      }
+      if (idx >= 0) data[idx] = salvo; else data.unshift(salvo);
+      window.__processosLicitatoriosFonteSupabase = true;
+      window.__processosLicitatoriosData = data;
+      return salvo;
+    }
+
+    async function excluirProcessoPrincipal(id) {
+      if (!supabaseProcessosDisponivel()) {
+        data = data.filter(d => d.id != id);
+        window.__processosLicitatoriosData = data;
+        saveData(data);
+        return true;
+      }
+
+      await window.AppDatabase.deleteProcessoCompleto(id);
+      data = data.filter(d => d.id != id);
+      window.__processosLicitatoriosFonteSupabase = true;
+      window.__processosLicitatoriosData = data;
+      return true;
+    }
+
+    async function excluirProcessosSelecionados(ids) {
+      const lista = Array.from(ids || []);
+      if (!supabaseProcessosDisponivel()) {
+        data = data.filter(item => !ids.has(item.id));
+        window.__processosLicitatoriosData = data;
+        saveData(data);
+        return lista.length;
+      }
+
+      await window.AppDatabase.deleteProcessosCompletos(lista);
+      data = data.filter(item => !ids.has(item.id));
+      window.__processosLicitatoriosFonteSupabase = true;
+      window.__processosLicitatoriosData = data;
+      return lista.length;
+    }
     const TIPOS_PUBLICACAO_PROCESSO = [
       "AVISO DE LICITAÇÃO",
       "AVISO DE CONTRATAÇÃO DIRETA",
@@ -4235,16 +4316,22 @@ filtered = data.filter(r =>
       renderTable();
     });
 
-    deleteSelectedBtn.addEventListener('click', () => {
+    deleteSelectedBtn.addEventListener('click', async () => {
       const total = selectedProcessos.size;
       if (!total) return;
       if (!confirm(`Deseja excluir ${total} processo(s) selecionado(s)?`)) return;
 
-      data = data.filter(item => !selectedProcessos.has(item.id));
-      selectedProcessos.clear();
-      saveData(data);
-      renderTable();
-      showToast(`${total} processo(s) excluído(s).`);
+      deleteSelectedBtn.disabled = true;
+      deleteSelectedBtn.textContent = 'Excluindo...';
+      try {
+        await excluirProcessosSelecionados(selectedProcessos);
+        selectedProcessos.clear();
+        renderTable();
+        showToast(`${total} processo(s) excluído(s).`);
+      } catch (error) {
+        erroSupabaseVisivel('excluir', error);
+        renderTable();
+      }
     });
 
 function renderItens(){
@@ -4392,7 +4479,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
       btnAssocSecretaria.style.display = deveMostrar ? 'inline-block' : 'none';
     }
 
-    function salvarAssociacaoInteressadoSecretaria(interessado, sigla) {
+    async function salvarAssociacaoInteressadoSecretaria(interessado, sigla) {
       const processoId = fld.idx.value;
 
       const map = loadSecretariaMap();
@@ -4407,11 +4494,13 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
       fld.secretaria.value = sigla;
 
       let atualizados = 0;
+      const processosAlterados = [];
       data.forEach(item => {
         const chaveItem = normalizarChaveInteressado(item.interessadoOriginal || item.secretaria);
         if (chaveItem === normalizarChaveInteressado(interessado)) {
           item.interessadoOriginal = interessado;
           item.secretaria = sigla;
+          processosAlterados.push(item);
           atualizados++;
         }
       });
@@ -4421,14 +4510,27 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
         if (atual) {
           atual.interessadoOriginal = interessado;
           atual.secretaria = sigla;
+          processosAlterados.push(atual);
           atualizados++;
         }
       }
 
-      saveData(data);
-      renderTable();
-      atualizarBotaoAssociacaoSecretaria();
-      alert(`Associação salva:\n${interessado} -> ${sigla}\n\n${atualizados} processo(s) atualizados agora.`);
+      try {
+        if (supabaseProcessosDisponivel()) {
+          for (const processo of processosAlterados) {
+            const idx = data.findIndex(item => item.id === processo.id);
+            await salvarProcessoPrincipal(processo, idx);
+          }
+        } else {
+          saveData(data);
+        }
+        window.__processosLicitatoriosData = data;
+        renderTable();
+        atualizarBotaoAssociacaoSecretaria();
+        alert(`Associação salva:\n${interessado} -> ${sigla}\n\n${atualizados} processo(s) atualizados agora.`);
+      } catch (error) {
+        erroSupabaseVisivel('atualizar', error);
+      }
     }
 
     btnAssocSecretaria.addEventListener('click', () => {
@@ -4446,7 +4548,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
 
     assocClose.onclick = assocCancel.onclick = () => dlgAssoc.close();
 
-    assocSave.addEventListener('click', () => {
+    assocSave.addEventListener('click', async () => {
       const interessado = (fld.interessadoOriginal.value || fld.secretaria.value || '').trim().toUpperCase();
       const sigla = assocSelect.value;
 
@@ -4461,7 +4563,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
       }
 
       dlgAssoc.close();
-      salvarAssociacaoInteressadoSecretaria(interessado, sigla);
+      await salvarAssociacaoInteressadoSecretaria(interessado, sigla);
     });
 
     function abrirNovoProcessoComEtiqueta(etiqueta) {
@@ -4572,9 +4674,10 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
       };
     }
 
-    function importarEtiquetasEmLote(etiquetas) {
+    async function importarEtiquetasEmLote(etiquetas) {
       let adicionados = 0;
       let ignorados = 0;
+      const novos = [];
 
       etiquetas.forEach(etiqueta => {
         const numero = String(etiqueta.numero || '').trim();
@@ -4583,11 +4686,24 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
           return;
         }
 
-        data.unshift(criarProcessoDaEtiqueta(etiqueta));
+        novos.push(criarProcessoDaEtiqueta(etiqueta));
         adicionados++;
       });
 
-      saveData(data);
+      try {
+        if (supabaseProcessosDisponivel()) {
+          for (const novo of novos) {
+            await salvarProcessoPrincipal(novo, -1);
+          }
+        } else {
+          data = [...novos.reverse(), ...data];
+          window.__processosLicitatoriosData = data;
+          saveData(data);
+        }
+      } catch (error) {
+        erroSupabaseVisivel('importar', error);
+        return;
+      }
       renderTable();
 
       if (ignorados) {
@@ -4626,7 +4742,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
         return;
       }
 
-      importarEtiquetasEmLote(etiquetas);
+      await importarEtiquetasEmLote(etiquetas);
 
       if (trocas.length) {
         const resumo = [...new Map(trocas.map(t => [`${t.de}->${t.para}`, t])).values()]
@@ -4641,7 +4757,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
       const file = e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (evt) => {
+      reader.onload = async (evt) => {
         try {
           const imported = JSON.parse(evt.target.result);
           if (!Array.isArray(imported)) throw new Error('Formato inválido.');
@@ -4731,7 +4847,7 @@ normalized.forEach(n => {
 });
 
 // NOVA LÓGICA: MESCLAR + PERGUNTAR SOBRE DUPLICADOS
-const existentes = loadData();
+const existentes = data.slice();
 const mapa = new Map();
 
 // 1) colocar os existentes no mapa
@@ -4764,13 +4880,23 @@ normalized.forEach(novo => {
 });
 
 // 3) salvar resultado final
-data = Array.from(mapa.values());
-saveData(data);
-renderTable();
-showToast('Importação concluída.');
-
-          showToast('Dados importados com sucesso.');
+const importadosMesclados = Array.from(mapa.values());
+if (supabaseProcessosDisponivel()) {
+  for (const proc of importadosMesclados) {
+    const idxAtual = data.findIndex(item => item.id === proc.id);
+    await salvarProcessoPrincipal(proc, idxAtual);
+  }
+  renderTable();
+  showToast('Importação concluída no Supabase.');
+} else {
+  data = importadosMesclados;
+  window.__processosLicitatoriosData = data;
+  saveData(data);
+  renderTable();
+  showToast('Importação concluída.');
+}
         } catch (err) {
+          console.error('Erro ao importar processos:', err);
           alert('Erro ao importar JSON: ' + err.message);
         }
       };
@@ -5970,7 +6096,7 @@ btnPrint.addEventListener('click', () => {
   win.focus();
   win.print();
 });
-btnExcluir.addEventListener('click', () => {
+btnExcluir.addEventListener('click', async () => {
 
 const id = fld.idx.value;
 
@@ -5978,12 +6104,19 @@ if(!id) return;
 
 if(!confirm("Deseja excluir este processo?")) return;
 
-data = data.filter(d => d.id != id);
-
-saveData(data);
+btnExcluir.disabled = true;
+btnExcluir.textContent = 'Excluindo...';
+try {
+await excluirProcessoPrincipal(id);
 renderTable();
-
 dlg.close();
+showToast('Processo excluído.');
+} catch (error) {
+erroSupabaseVisivel('excluir', error);
+} finally {
+btnExcluir.disabled = false;
+btnExcluir.textContent = 'Excluir';
+}
 
 });
 
@@ -6238,7 +6371,6 @@ cotItens: cotItensColetados,
       const dup = data.find(x => x.numero === item.numero && x.id !== item.id);
       if (dup) return alert('Já existe processo com este número.');
       const idx = data.findIndex(x => x.id === item.id);
-      if (idx >= 0) data[idx] = item; else data.unshift(item);
       const fornecedorRegistrado = registrarFornecedorDoProcesso(item);
       if (fornecedorRegistrado && !item.fornecedorId) item.fornecedorId = fornecedorRegistrado.id;
       (item.resultadoItens || []).forEach(resItem => {
@@ -6252,10 +6384,25 @@ cotItens: cotItensColetados,
           resItem.fornecedorId = fornecedorResultado?.id || resItem.fornecedorId || "";
         }
       });
-      saveData(data);
-      renderTable();
-      dlg.close();
-      showToast('Processo salvo.');
+      const submitBtn = form.querySelector('[type="submit"]');
+      const submitTextoOriginal = submitBtn?.textContent || '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Salvando...';
+      }
+      try {
+        await salvarProcessoPrincipal(item, idx);
+        renderTable();
+        dlg.close();
+        showToast(isEdicao ? 'Processo atualizado no Supabase.' : 'Processo cadastrado no Supabase.');
+      } catch (error) {
+        erroSupabaseVisivel(isEdicao ? 'atualizar' : 'salvar', error);
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitTextoOriginal || 'Salvar';
+        }
+      }
     });
 
     function openEdit(id){
@@ -6517,23 +6664,32 @@ btnExcluir.style.display = "inline-block";
 
     dlgEditClose.onclick = dlgEditCancel.onclick = () => dlgEdit.close();
 
-    dlgEditDelete.onclick = () => {
+    dlgEditDelete.onclick = async () => {
       const id = fldEdit.idx.value;
       if (!confirm('Excluir este processo?')) return;
-      data = data.filter(x => x.id !== id);
-      saveData(data);
-      renderTable();
-      dlgEdit.close();
-      showToast('Excluído.');
+      dlgEditDelete.disabled = true;
+      dlgEditDelete.textContent = 'Excluindo...';
+      try {
+        await excluirProcessoPrincipal(id);
+        renderTable();
+        dlgEdit.close();
+        showToast('Processo excluído.');
+      } catch (error) {
+        erroSupabaseVisivel('excluir', error);
+      } finally {
+        dlgEditDelete.disabled = false;
+        dlgEditDelete.textContent = 'Excluir';
+      }
     };
 
-    formEdit.onsubmit = (ev) => {
+    formEdit.onsubmit = async (ev) => {
 
       
       ev.preventDefault();
       const id = fldEdit.idx.value;
       const idx = data.findIndex(x => x.id === id);
       if (idx === -1) return alert('Registro não encontrado.');
+      const anterior = { ...data[idx] };
       const newNumero = fldEdit.numero.value.trim();
       const dup = data.find(x => x.numero === newNumero && x.id !== id);
       if (dup) return alert('Já existe outro processo com este número.');
@@ -6566,10 +6722,26 @@ btnExcluir.style.display = "inline-block";
 
       registrarFornecedorDoProcesso(data[idx]);
 
-      saveData(data);
-      renderTable();
-      dlgEdit.close();
-      showToast('Alterações salvas.');
+      const submitBtn = formEdit.querySelector('[type="submit"]');
+      const submitTextoOriginal = submitBtn?.textContent || '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Salvando...';
+      }
+      try {
+        await salvarProcessoPrincipal(data[idx], idx);
+        renderTable();
+        dlgEdit.close();
+        showToast('Processo atualizado no Supabase.');
+      } catch (error) {
+        data[idx] = anterior;
+        erroSupabaseVisivel('atualizar', error);
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitTextoOriginal || 'Salvar';
+        }
+      }
     };
 
 function gerarConteudoVisualizacao(item){
@@ -7022,6 +7194,7 @@ ${registroPrecoHtml}
 
     carregarAssuntosFiltro();
     renderTable();
+    carregarProcessosSupabase();
 
     // utilitários públicos
     window.getProcessoLicitatorioPorNumero = (n) => {
@@ -7029,16 +7202,21 @@ ${registroPrecoHtml}
 
   n = String(n).trim().toLowerCase();
 
-  const processos = loadData();
-
-  return processos.find(p =>
+  return data.find(p =>
     String(p.numero || '')
       .trim()
       .toLowerCase() === n
   ) || null;
 };
 
-    window.reloadProcessosLicitatorios = () => { data = loadData(); renderTable(); };
+    window.reloadProcessosLicitatorios = async () => {
+      if (supabaseProcessosDisponivel()) {
+        await carregarProcessosSupabase();
+        return;
+      }
+      data = loadData();
+      renderTable();
+    };
 
 
 
