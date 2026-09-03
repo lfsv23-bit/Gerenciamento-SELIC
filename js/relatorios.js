@@ -4,6 +4,27 @@
   // --- helpers existentes (mantive compatibilidade com seu projeto) ---
   function hasXLSX(){ return typeof window.XLSX !== 'undefined'; }
 
+  async function carregarDadosBase() {
+    if (window.isSupabaseConfigured?.() && window.AppDatabase) {
+      try {
+        await window.AppDatabase.requireAuthenticatedUser?.();
+        const [procs, tram] = await Promise.all([
+          window.AppDatabase.loadProcessosCompletos?.() || [],
+          window.AppDatabase.listarTramitesInternos?.() || []
+        ]);
+        return { procs: Array.isArray(procs) ? procs : [], tram: Array.isArray(tram) ? tram : [] };
+      } catch (error) {
+        console.error('[SUPABASE][relatorios][LOAD][ERRO]', error);
+        alert('Não foi possível carregar dados do Supabase para relatórios.\n\nDetalhe: ' + (error?.message || error));
+        return { procs: [], tram: [] };
+      }
+    }
+    return {
+      procs: JSON.parse(localStorage.getItem('processosLicitatorios') || '[]'),
+      tram: JSON.parse(localStorage.getItem('tramitesProcessos') || '[]')
+    };
+  }
+
   function exportToXLSX(filename, sheets) {
     if (!hasXLSX()) {
       alert('Biblioteca SheetJS (XLSX) não encontrada. Coloque js/xlsx.full.min.js na pasta js.');
@@ -90,7 +111,7 @@
   }
 
   // --- UI / initRelatorios ---
-  function initRelatorios(container){
+  async function initRelatorios(container){
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido para initRelatorios');
 
@@ -164,9 +185,7 @@
     const f_apply = container.querySelector('#rel_f_apply');
     const f_close = container.querySelector('#rel_filtros_close');
 
-    // dados carregados do localStorage
-    const procs = JSON.parse(localStorage.getItem('processosLicitatorios') || '[]');
-    const tram = JSON.parse(localStorage.getItem('tramitesProcessos') || '[]');
+    const { procs, tram } = await carregarDadosBase();
 
     // gera dataset unificado: cada trâmite vira uma linha com referência ao processo; usamos último trâmite para estado "atual"
     // mas mostramos todas as entradas (se quiser histórico, depois adaptamos). Aqui vamos listar cada processo com seu último trâmite.

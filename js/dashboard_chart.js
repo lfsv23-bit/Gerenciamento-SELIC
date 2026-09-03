@@ -16,6 +16,27 @@ const palette = [
 // --- utilitários ---
 function hasXLSX(){ return typeof XLSX !== 'undefined'; }
 
+async function carregarDadosDashboard(){
+  if(window.isSupabaseConfigured?.() && window.AppDatabase){
+    try{
+      await window.AppDatabase.requireAuthenticatedUser?.();
+      const [procs, tram] = await Promise.all([
+        window.AppDatabase.loadProcessosCompletos?.() || [],
+        window.AppDatabase.listarTramitesInternos?.() || []
+      ]);
+      return {procs:Array.isArray(procs)?procs:[], tram:Array.isArray(tram)?tram:[]};
+    }catch(error){
+      console.error("[SUPABASE][dashboard][LOAD][ERRO]", error);
+      alert("Não foi possível carregar dados do Supabase para o dashboard.\n\nDetalhe: " + (error?.message || error));
+      return {procs:[], tram:[]};
+    }
+  }
+  return {
+    procs: JSON.parse(localStorage.getItem("processosLicitatorios")||"[]"),
+    tram: JSON.parse(localStorage.getItem("tramitesProcessos")||"[]")
+  };
+}
+
 function exportToXLSX(filename, sheets){
   if(!hasXLSX()){
     alert("SheetJS não encontrado. Coloque js/xlsx.full.min.js");
@@ -76,12 +97,11 @@ function timelineGroupDaily(list, dateField){
 // ===============================================
 // INÍCIO DO DASHBOARD PRINCIPAL
 // ===============================================
-function initDashboardChart(container){
+async function initDashboardChart(container){
 
   if(typeof container==="string") container=document.getElementById(container);
 
-  const procs = JSON.parse(localStorage.getItem("processosLicitatorios")||"[]");
-  const tram  = JSON.parse(localStorage.getItem("tramitesProcessos")||"[]");
+  const {procs, tram} = await carregarDadosDashboard();
 
   // --- SOMENTE PENDENTES ---
   const tramPendentes = tram.filter(t => 
@@ -388,7 +408,9 @@ new Chart(document.getElementById("c10"),{
     exportToXLSX("dashboard.xlsx",{Processos:procs,Tramites:tram});
   };
   document.getElementById("expP").onclick=()=>window.print();
-  document.getElementById("refresh").onclick=()=>initDashboardChart(container);
+  document.getElementById("refresh").onclick=()=>initDashboardChart(container).catch(error => {
+    console.error("[dashboard][refresh][ERRO]", error);
+  });
 }
 
 window.initDashboard = initDashboardChart;

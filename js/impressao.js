@@ -4,6 +4,27 @@
 (function(){
   function hasXLSX(){ return typeof window.XLSX !== 'undefined'; }
 
+  async function carregarDadosImpressao() {
+    if (window.isSupabaseConfigured?.() && window.AppDatabase) {
+      try {
+        await window.AppDatabase.requireAuthenticatedUser?.();
+        const [procs, tram] = await Promise.all([
+          window.AppDatabase.loadProcessosCompletos?.() || [],
+          window.AppDatabase.listarTramitesInternos?.() || []
+        ]);
+        return { procs: Array.isArray(procs) ? procs : [], tram: Array.isArray(tram) ? tram : [] };
+      } catch (error) {
+        console.error('[SUPABASE][impressao][LOAD][ERRO]', error);
+        alert('Não foi possível carregar dados do Supabase para impressão.\n\nDetalhe: ' + (error?.message || error));
+        return { procs: [], tram: [] };
+      }
+    }
+    return {
+      procs: JSON.parse(localStorage.getItem('processosLicitatorios') || '[]'),
+      tram: JSON.parse(localStorage.getItem('tramitesProcessos') || '[]')
+    };
+  }
+
   function exportToXLSX(filename, sheets) {
     if (!hasXLSX()) {
       alert('Biblioteca SheetJS (XLSX) não encontrada. Coloque js/xlsx.full.min.js na pasta js.');
@@ -40,8 +61,9 @@
     setTimeout(()=> w.print(), 400);
   }
 
-  function initImpressao(container){
+  async function initImpressao(container){
     if (typeof container === 'string') container = document.getElementById(container);
+    const { procs, tram } = await carregarDadosImpressao();
 
     container.innerHTML = `
       <section class="wrap">
@@ -74,8 +96,6 @@
     const btnP = container.querySelector('#imp_export_pdf');
 
     function buildPreview(type, q) {
-      const procs = JSON.parse(localStorage.getItem('processosLicitatorios') || '[]');
-      const tram = JSON.parse(localStorage.getItem('tramitesProcessos') || '[]');
       q = (q||'').toLowerCase().trim();
 
       if (type === 'processos') {
@@ -117,7 +137,10 @@
         const totalProcs = procs.length;
         const totalTram = tram.length;
         const bySec = {};
-        procs.forEach(p=> bySec[p.secretaria = (p.secretaria||'Não informado')] = (bySec[p.secretaria]||0)+1);
+        procs.forEach(p => {
+          const secretaria = p.secretaria || 'Não informado';
+          bySec[secretaria] = (bySec[secretaria] || 0) + 1;
+        });
         return `
           <div style="display:flex;gap:12px;flex-wrap:wrap">
             <div class="card"><div class="muted">Processos</div><div style="font-size:22px">${totalProcs}</div></div>
@@ -137,8 +160,6 @@
     btnX.onclick = () => {
       const type = sel.value;
       if (!type) return alert('Selecione o tipo para exportar.');
-      const procs = JSON.parse(localStorage.getItem('processosLicitatorios') || '[]');
-      const tram = JSON.parse(localStorage.getItem('tramitesProcessos') || '[]');
       if (type === 'processos') {
         const rows = procs.filter(p=>{
           const q = (filter.value||'').toLowerCase();

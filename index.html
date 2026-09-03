@@ -980,9 +980,21 @@ btnMerge.addEventListener("click", async () => {
 
       renderizar();
     }
-    function loadModule(moduleFn) {
+    async function loadModule(moduleFn) {
       content.innerHTML = '';
-      moduleFn(content);
+      try {
+        await moduleFn(content);
+      } catch (error) {
+        console.error('Erro ao carregar módulo:', error);
+        content.innerHTML = `
+          <section class="wrap">
+            <div class="card">
+              <h2>Erro ao carregar tela</h2>
+              <p class="muted">${String(error?.message || error)}</p>
+            </div>
+          </section>
+        `;
+      }
     }
 
     menuLicit.addEventListener("click", (e) => {
@@ -1067,16 +1079,16 @@ btnMerge.addEventListener("click", async () => {
   </script>
   <script src="js/chart.min.js"></script>
   <script src="js/xlsx.full.min.js"></script>
-  <script src="js/relatorios.js"></script>
+  <script src="js/relatorios.js?v=3.0-corrige-load-supabase-20260903"></script>
   
-  <script src="js/impressao.js"></script>
+  <script src="js/impressao.js?v=3.0-corrige-load-supabase-20260903"></script>
 
 
 
 
 <link rel="stylesheet" href="css/dashboard_chart.css">
 <script src="js/chart.min.js"></script>
-<script src="js/dashboard_chart.js"></script>
+<script src="js/dashboard_chart.js?v=3.0-corrige-load-supabase-20260903"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 

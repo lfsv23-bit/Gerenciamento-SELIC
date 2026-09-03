@@ -63,6 +63,25 @@
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
   }
 
+  async function carregarProcessosLicitatoriosFonte(options = {}) {
+    if (window.isSupabaseConfigured?.() && window.AppDatabase?.loadProcessosCompletos) {
+      try {
+        await window.AppDatabase.requireAuthenticatedUser?.();
+        const processos = await window.AppDatabase.loadProcessosCompletos();
+        window.__processosLicitatoriosData = Array.isArray(processos) ? processos : [];
+        window.__processosLicitatoriosFonteSupabase = true;
+        return window.__processosLicitatoriosData;
+      } catch (error) {
+        console.error('[SUPABASE][processos][SELECT][ERRO]', error);
+        if (!options.silencioso) {
+          alert('Não foi possível carregar os processos no Supabase.\n\nDetalhe: ' + (error?.message || error));
+        }
+        return Array.isArray(window.__processosLicitatoriosData) ? window.__processosLicitatoriosData : [];
+      }
+    }
+    return loadLocalDataForMigration();
+  }
+
   function loadSecretariaMap() {
     if (window.isSupabaseConfigured?.()) {
       return window.__secretariaMapData && typeof window.__secretariaMapData === 'object' ? window.__secretariaMapData : {};
@@ -8196,11 +8215,11 @@ atualizarEtapasConcluidas();
 
 }
 
-  function initCategoriaCredenciamento(container) {
+  async function initCategoriaCredenciamento(container) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido');
 
-    const processos = loadData();
+    const processos = await carregarProcessosLicitatoriosFonte();
     const principais = processos.filter(p =>
       p.tipoProcesso === "credenciamento" && p.credTipo === "principal"
     );
@@ -8405,7 +8424,7 @@ atualizarEtapasConcluidas();
     render();
   }
 
-  function initCategoriaContratacoes(container, config) {
+  async function initCategoriaContratacoes(container, config) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido');
 
@@ -8416,7 +8435,7 @@ atualizarEtapasConcluidas();
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
-    const processos = loadData();
+    const processos = await carregarProcessosLicitatoriosFonte();
     const alvo = normalizarCadastro(config.alvo || "");
     const titulo = config.titulo || "Contratações";
     const subtitulo = config.subtitulo || "Processos agrupados por forma de contratação/modalidade.";
@@ -8708,13 +8727,15 @@ atualizarEtapasConcluidas();
         }
         salvarControleManual(campoId.value, dadosSalvar);
         modal?.close();
-        initCategoriaContratacoes(container, config);
+        initCategoriaContratacoes(container, config).catch(error => {
+          console.error("[contratacoes][reload][ERRO]", error);
+        });
       });
     }
   }
 
-  function initCategoriaContratacoesPregoes(container) {
-    initCategoriaContratacoes(container, {
+  async function initCategoriaContratacoesPregoes(container) {
+    await initCategoriaContratacoes(container, {
       titulo: "Pregões",
       alvo: "PREGAO",
       subtitulo: "Processos cuja Forma de Contratação / Modalidade esteja cadastrada como pregão.",
@@ -8728,16 +8749,16 @@ atualizarEtapasConcluidas();
     });
   }
 
-  function initCategoriaContratacoesConcorrencias(container) {
-    initCategoriaContratacoes(container, {
+  async function initCategoriaContratacoesConcorrencias(container) {
+    await initCategoriaContratacoes(container, {
       titulo: "Concorrências",
       alvo: "CONCORRENCIA",
       subtitulo: "Processos cuja Forma de Contratação / Modalidade esteja cadastrada como concorrência."
     });
   }
 
-  function initCategoriaContratacoesDispensas(container) {
-    initCategoriaContratacoes(container, {
+  async function initCategoriaContratacoesDispensas(container) {
+    await initCategoriaContratacoes(container, {
       titulo: "Dispensas",
       alvo: "DISPENSA",
       subtitulo: "Processos cadastrados como dispensa de licitação.",
@@ -8752,20 +8773,21 @@ atualizarEtapasConcluidas();
     });
   }
 
-  function initCategoriaContratacoesInexigibilidades(container) {
-    initCategoriaContratacoes(container, {
+  async function initCategoriaContratacoesInexigibilidades(container) {
+    await initCategoriaContratacoes(container, {
       titulo: "Inexigibilidades",
       alvo: "INEXIGIBILIDADE",
       subtitulo: "Processos cadastrados como inexigibilidade."
     });
   }
 
-  function initFornecedores(container) {
+  async function initFornecedores(container) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido');
 
     let filtro = "";
     let pessoasDraft = [];
+    let processosFornecedoresCache = await carregarProcessosLicitatoriosFonte({ silencioso: true });
 
     const esc = (value) => String(value || "")
       .replace(/&/g, "&amp;")
@@ -8776,7 +8798,7 @@ atualizarEtapasConcluidas();
 
     async function sincronizarFornecedoresDosProcessos() {
       const fornecedoresAntes = loadFornecedores();
-      loadData().forEach(registrarFornecedorDoProcesso);
+      processosFornecedoresCache.forEach(registrarFornecedorDoProcesso);
       const fornecedoresDepois = loadFornecedores();
       if (supabaseFornecedoresAtivo()) {
         const novosOuAlterados = fornecedoresDepois.filter(f => {
@@ -8790,13 +8812,13 @@ atualizarEtapasConcluidas();
     }
 
     function pessoaUsadaEmProcesso(pessoaId) {
-      return loadData().some(p => p.pessoaVinculadaId === pessoaId);
+      return processosFornecedoresCache.some(p => p.pessoaVinculadaId === pessoaId);
     }
 
     function fornecedorUsadoEmProcesso(fornecedor) {
       if (!fornecedor) return false;
       const cnpjDigits = onlyDigits(fornecedor.cnpj);
-      return loadData().some(p =>
+      return processosFornecedoresCache.some(p =>
         p.fornecedorId === fornecedor.id ||
         onlyDigits(p.cnpj) === cnpjDigits ||
         onlyDigits(p.credCnpj) === cnpjDigits ||
@@ -8807,7 +8829,7 @@ atualizarEtapasConcluidas();
     function processosVinculadosFornecedor(fornecedor) {
       if (!fornecedor) return [];
       const cnpjDigits = onlyDigits(fornecedor.cnpj);
-      return loadData().filter(p =>
+      return processosFornecedoresCache.filter(p =>
         p.fornecedorId === fornecedor.id ||
         onlyDigits(p.cnpj) === cnpjDigits ||
         onlyDigits(p.credCnpj) === cnpjDigits ||
@@ -9383,7 +9405,7 @@ atualizarEtapasConcluidas();
     })();
   }
 
-  function initCategoriaRegistroPrecoIrp(container) {
+  async function initCategoriaRegistroPrecoIrp(container) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido');
 
@@ -9434,6 +9456,7 @@ atualizarEtapasConcluidas();
     const linkPdf = (arquivo, label) => linkAnexoPdf(arquivo, label);
 
     let irps = loadIrpsRegistroPreco();
+    let processosCategoriaCache = await carregarProcessosLicitatoriosFonte({ silencioso: true });
     let itensDraft = [];
     let editId = '';
 
@@ -9542,7 +9565,7 @@ atualizarEtapasConcluidas();
     };
 
     function processosGeradoresRegistroPreco() {
-      return loadData().filter(p => p.tipoRegistroPreco === "gerador");
+      return processosCategoriaCache.filter(p => p.tipoRegistroPreco === "gerador");
     }
 
     function rotuloProcessoGerador(id) {
@@ -9574,7 +9597,7 @@ atualizarEtapasConcluidas();
     }
 
     async function sincronizarProcessoGeradorDaIrp(irp) {
-      const processos = loadData();
+      const processos = processosCategoriaCache.length ? processosCategoriaCache : await carregarProcessosLicitatoriosFonte({ silencioso: true });
       let mudou = false;
       const alterados = [];
       processos.forEach(processo => {
@@ -9597,6 +9620,7 @@ atualizarEtapasConcluidas();
         } else {
           saveData(processos, { localOnly: true });
         }
+        processosCategoriaCache = processos;
       }
     }
 
@@ -9804,11 +9828,11 @@ atualizarEtapasConcluidas();
     })();
   }
 
-  function initCategoriaRegistroPrecoAdesoes(container) {
+  async function initCategoriaRegistroPrecoAdesoes(container) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido');
 
-    const processos = loadData();
+    const processos = await carregarProcessosLicitatoriosFonte();
     const geradores = processos.filter(p => p.tipoRegistroPreco === "gerador");
     const adesoes = processos.filter(p => p.tipoRegistroPreco === "adesao");
     const internas = adesoes.filter(p => (p.tipoAdesaoRegistro || (p.processoGerador ? "interna" : "")) === "interna");
@@ -9881,11 +9905,11 @@ atualizarEtapasConcluidas();
     `;
   }
 
-  function initCategoriaRegistroPrecoAtas(container) {
+  async function initCategoriaRegistroPrecoAtas(container) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido');
 
-    const todosProcessos = loadData();
+    const todosProcessos = await carregarProcessosLicitatoriosFonte();
     const processosGeradores = todosProcessos.filter(p => p.tipoRegistroPreco === "gerador");
     const processos = processosGeradores.filter(p => Array.isArray(p.atasRegistroPreco) && p.atasRegistroPreco.length);
     const esc = (value) => String(value || "")
@@ -10124,7 +10148,7 @@ atualizarEtapasConcluidas();
 
     function irpDoProcessoCategoria(processoId) {
       if (!processoId) return null;
-      const processosAtualizados = loadData();
+      const processosAtualizados = todosProcessos;
       const processo = processosAtualizados.find(p => p.id === processoId);
       const irps = loadIrpsRegistroPreco();
       const irpId = processo?.irpRegistroPreco || '';
@@ -10152,7 +10176,7 @@ atualizarEtapasConcluidas();
       const itens = linhas.slice(1).filter(row => Array.isArray(row) && row.some(cell => String(cell || '').trim()));
       if (!itens.length) return alert('A IRP vinculada não possui itens cadastrados.');
 
-      const processosAtualizados = loadData();
+      const processosAtualizados = todosProcessos;
       const processo = processosAtualizados.find(p => p.id === processoId);
       const atas = Array.isArray(processo?.atasRegistroPreco) ? processo.atasRegistroPreco : [];
       const usadosOutrasAtas = mapaItensAtaUsados(atas, {
@@ -10712,7 +10736,7 @@ atualizarEtapasConcluidas();
 
       const processoSelect = container.querySelector('#cat_ata_processo');
       const titulo = container.querySelector('#cat_ata_title');
-      const processosAtualizados = loadData();
+      const processosAtualizados = todosProcessos;
       const processo = processosAtualizados.find(p => p.id === processoId);
       const atas = Array.isArray(processo?.atasRegistroPreco) ? processo.atasRegistroPreco : [];
       const indexNumerico = Number(ataIndex);
@@ -10867,7 +10891,7 @@ atualizarEtapasConcluidas();
         const label = btn.dataset.catAtaLabel || 'esta ata';
         if (!confirm(`Excluir ${label}? Esta ação removerá a ata deste processo.`)) return;
 
-        const processosAtualizados = loadData();
+        const processosAtualizados = await carregarProcessosLicitatoriosFonte({ silencioso: true });
         const processoIndex = processosAtualizados.findIndex(p => p.id === processoId);
         if (processoIndex < 0) return alert('Processo gerador não encontrado.');
 
@@ -10887,7 +10911,7 @@ atualizarEtapasConcluidas();
           return;
         }
         showToast('Ata excluída com sucesso.');
-        initCategoriaRegistroPrecoAtas(container);
+        await initCategoriaRegistroPrecoAtas(container);
       };
     });
 
@@ -11081,7 +11105,7 @@ atualizarEtapasConcluidas();
       ev.preventDefault();
       const processoSelect = container.querySelector('#cat_ata_processo');
       const processoId = processoSelect.value || catAtaEditProcessoId;
-      const processosAtualizados = loadData();
+      const processosAtualizados = await carregarProcessosLicitatoriosFonte({ silencioso: true });
       const processoIndex = processosAtualizados.findIndex(p => p.id === processoId);
       if (processoIndex < 0) return alert('Selecione o processo gerador da ata.');
 
@@ -11164,7 +11188,7 @@ atualizarEtapasConcluidas();
       processoSelect.disabled = false;
       dlg.close();
       showToast(ataIndex >= 0 ? 'Ata atualizada com sucesso.' : 'Ata cadastrada e vinculada ao processo gerador.');
-      initCategoriaRegistroPrecoAtas(container);
+      await initCategoriaRegistroPrecoAtas(container);
     });
   }
 
