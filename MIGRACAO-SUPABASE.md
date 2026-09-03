@@ -91,6 +91,8 @@ O `schema.sql` mantem RLS habilitado em todas as tabelas do sistema e remove pol
 
 As permissoes de `SELECT`, `INSERT`, `UPDATE` e `DELETE` sao criadas somente para a role `authenticated`.
 
+Importante: alem das policies de RLS, o script tambem executa `GRANT SELECT, INSERT, UPDATE, DELETE` para `authenticated` e `REVOKE ALL` para `anon`. Sem esses `GRANTs`, o sistema pode fazer login corretamente, mas ainda receber o erro `permission denied for table processos` ao carregar ou salvar processos.
+
 Ao final do `schema.sql` existe uma consulta de auditoria. Depois de executar o script, essa consulta deve retornar zero linhas:
 
 ```sql

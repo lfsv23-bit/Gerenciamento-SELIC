@@ -343,6 +343,9 @@ begin
     execute format('drop trigger if exists trg_%I_updated_at on public.%I', tabela, tabela);
     execute format('create trigger trg_%I_updated_at before update on public.%I for each row execute function public.set_updated_at()', tabela, tabela);
     execute format('alter table public.%I enable row level security', tabela);
+    execute format('revoke all on table public.%I from anon', tabela);
+    execute format('revoke all on table public.%I from authenticated', tabela);
+    execute format('grant select, insert, update, delete on table public.%I to authenticated', tabela);
     execute format('drop policy if exists "anon_select_%I" on public.%I', tabela, tabela);
     execute format('drop policy if exists "anon_insert_%I" on public.%I', tabela, tabela);
     execute format('drop policy if exists "anon_update_%I" on public.%I', tabela, tabela);
@@ -357,6 +360,8 @@ begin
     execute format('create policy "authenticated_delete_%I" on public.%I for delete to authenticated using (true)', tabela, tabela);
   end loop;
 end $$;
+
+grant usage on schema public to authenticated;
 
 insert into public.secretarias (sigla) values
   ('AMHARC'), ('AGETRAT'), ('FUPHAN'), ('FMAP'), ('FUNPREV'), ('SISP'), ('SEMED'), ('SEPRAD'),
