@@ -8466,7 +8466,7 @@ atualizarEtapasConcluidas();
 
     function valorProcesso(processo, campo) {
       const value = processo[campo];
-      if (typeof value === "number") return formatBRL(value);
+      if (typeof value === "number") return formatBRLDisplay(value);
       return value || "";
     }
 
