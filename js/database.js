@@ -110,6 +110,27 @@
     return String(fallback || `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
   }
 
+  function limparExtraParaJson(value, visitados = new WeakSet()) {
+    if (value == null) return value;
+    if (typeof Blob !== "undefined" && value instanceof Blob) return undefined;
+    if (typeof File !== "undefined" && value instanceof File) return undefined;
+    if (typeof value !== "object") return value;
+    if (visitados.has(value)) return undefined;
+    visitados.add(value);
+    if (Array.isArray(value)) {
+      return value
+        .map(item => limparExtraParaJson(item, visitados))
+        .filter(item => item !== undefined);
+    }
+    const out = {};
+    Object.entries(value).forEach(([key, item]) => {
+      if (key === "blob" || key === "dataUrl" || key === "arquivoPendente") return;
+      const limpo = limparExtraParaJson(item, visitados);
+      if (limpo !== undefined) out[key] = limpo;
+    });
+    return out;
+  }
+
   function processoCore(processo) {
     return {
       local_id: localId("proc", processo.id),
@@ -135,7 +156,7 @@
       observacao: processo.observacao || "",
       valor_estimado: parseNumber(processo.trValorEstimado || processo.valorEstimado),
       valor_homologado: parseNumber(processo.resultadoValorHomologado),
-      extra: processo
+      extra: limparExtraParaJson(processo)
     };
   }
 
@@ -182,7 +203,7 @@
       razao_social: fornecedor?.razaoSocial || fornecedor?.razao || fornecedor?.fornecedorRazao || fornecedor?.credRazao || "",
       nome_fantasia: fornecedor?.nomeFantasia || fornecedor?.fantasia || fornecedor?.fornecedorFantasia || fornecedor?.credFantasia || "",
       origem: fornecedor?.origem || "",
-      extra: fornecedor || {}
+      extra: limparExtraParaJson(fornecedor || {})
     };
   }
 
@@ -195,7 +216,7 @@
       tipo: pessoa?.tipoVinculo || pessoa?.tipo || pessoa?.tipo_vinculo || "",
       situacao: pessoa?.ativo === false ? "INATIVO" : (pessoa?.situacao || "ATIVO"),
       observacao: pessoa?.observacao || "",
-      extra: pessoa || {}
+      extra: limparExtraParaJson(pessoa || {})
     };
   }
 
@@ -673,11 +694,19 @@
 
     storagePath = storagePath || `anexos/${anexoLocalId}/${safeStorageName(nome)}`;
     console.log("[SUPABASE][anexos][STORAGE_UPLOAD]", { bucket, storagePath, nome, tipo, origem });
-    const upload = await client.storage
-      .from(bucket)
-      .upload(storagePath, blob, { contentType: tipo, upsert: true });
+    let upload;
+    try {
+      upload = await client.storage
+        .from(bucket)
+        .upload(storagePath, blob, { contentType: tipo, upsert: true });
+    } catch (error) {
+      console.error("[SUPABASE][anexos][STORAGE_THROW]", { bucket, storagePath, nome, tipo, origem, error });
+      throw new Error(`Falha ao enviar o anexo "${nome}" para o Supabase Storage. Verifique se o bucket "${bucket}" existe e se as policies do Storage foram aplicadas. Detalhe: ${error?.message || error}`);
+    }
     console.log("[SUPABASE][anexos][STORAGE_RESULT]", { data: upload.data, error: upload.error });
-    if (upload.error) throw upload.error;
+    if (upload.error) {
+      throw new Error(`Falha ao enviar o anexo "${nome}" para o Supabase Storage. Detalhe: ${upload.error.message || upload.error}`);
+    }
 
     return { storageBucket: bucket, storagePath };
   }
@@ -984,7 +1013,7 @@
         data_publicacao: parseDateBR(pub.data || pub.dataPublicacao),
         link: pub.link || pub.url || "",
         anexo_id: anexoId,
-        extra: pub
+        extra: limparExtraParaJson(pub)
       });
     }
     await replaceRows(client, "processo_publicacoes", "processo_id", processoId, publicacoes);
@@ -1015,7 +1044,7 @@
       valor_unitario: parseNumber(item.valorUnitario || item.unitario || item.valor),
       valor_total: parseNumber(item.valorTotal || item.total),
       situacao: item.situacao || "",
-      extra: item
+      extra: limparExtraParaJson(item)
     };
   }
 
@@ -1050,7 +1079,7 @@
         nome_pdf_extrato: ata.nomePdfExtrato || "",
         pdf_ata_anexo_id: await salvarAnexoMeta(client, ata.pdfAta, `ata:${ata.numero || ""}/${ata.ano || ""}`),
         pdf_extrato_anexo_id: await salvarAnexoMeta(client, ata.pdfExtrato, `ata_extrato:${ata.numero || ""}/${ata.ano || ""}`),
-        extra: ata
+        extra: limparExtraParaJson(ata)
       }).select("id").single();
       if (error) throw error;
       const ataId = data.id;
@@ -1073,7 +1102,7 @@
         quantidade: index === 0 ? null : parseNumber(row[3]),
         valor_unitario: index === 0 ? null : parseNumber(row[4]),
         valor_total: index === 0 ? null : parseNumber(row[5]),
-        extra: { raw: row, original: item || null }
+        extra: limparExtraParaJson({ raw: row, original: item || null })
       };
       }));
 
@@ -1087,7 +1116,7 @@
           data_publicacao: parseDateBR(pub.data),
           link: pub.link || "",
           anexo_id: await salvarAnexoMeta(client, pub.pdf, `ata_publicacao:${ata.numero || ""}/${ata.ano || ""}`),
-          extra: pub
+          extra: limparExtraParaJson(pub)
         });
       }
       await replaceRows(client, "ata_publicacoes", "ata_id", ataId, publicacoesAta);
@@ -1103,7 +1132,7 @@
           data_assinatura: parseDateBR(aditivo.dataAssinatura),
           data_publicacao: parseDateBR(aditivo.publicacao),
           anexo_id: await salvarAnexoMeta(client, aditivo.pdf, `ata_aditivo:${ata.numero || ""}/${ata.ano || ""}`),
-          extra: aditivo
+          extra: limparExtraParaJson(aditivo)
         }).select("id").single();
         if (saved.error) throw saved.error;
         const publicacoesAditivo = [];
@@ -1116,7 +1145,7 @@
             data_publicacao: parseDateBR(pub.data),
             link: pub.link || "",
             anexo_id: await salvarAnexoMeta(client, pub.pdf, `ata_aditivo_publicacao:${ata.numero || ""}/${ata.ano || ""}`),
-            extra: pub
+            extra: limparExtraParaJson(pub)
           });
         }
         await replaceRows(client, "ata_aditivo_publicacoes", "aditivo_id", saved.data.id, publicacoesAditivo);
