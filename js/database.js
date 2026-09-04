@@ -15,20 +15,47 @@
     if (!window.__supabaseClient) {
       const cfg = window.SUPABASE_CONFIG;
       window.__supabaseClient = window.supabase.createClient(cfg.url, cfg.publishableKey, {
-        db: { schema: cfg.schema || "public" }
+        db: { schema: cfg.schema || "public" },
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
       });
     }
     return window.__supabaseClient;
   }
 
+  function redirectToLogin() {
+    if (typeof window === "undefined") return;
+    const page = String(window.location.pathname.split("/").pop() || "index.html");
+    if (page.toLowerCase() === "login.html") return;
+    window.location.href = `login.html?next=${encodeURIComponent(page)}`;
+  }
+
   async function requireAuthenticatedUser() {
     const client = requireClient();
+    const sessionResult = await client.auth.getSession();
+    if (sessionResult.error) {
+      console.error("[Supabase Auth] Erro ao carregar sessao:", sessionResult.error);
+      throw sessionResult.error;
+    }
+    if (!sessionResult.data?.session) {
+      redirectToLogin();
+      throw new Error("Sessao expirada ou nao encontrada. Faca login novamente.");
+    }
+
     const { data, error } = await client.auth.getUser();
     if (error) {
       console.error("[Supabase Auth] Erro ao confirmar usuario autenticado:", error);
+      if (String(error.message || "").toLowerCase().includes("auth session missing")) {
+        redirectToLogin();
+        throw new Error("Sessao expirada ou nao encontrada. Faca login novamente.");
+      }
       throw error;
     }
     if (!data?.user?.id) {
+      redirectToLogin();
       throw new Error("Usuario autenticado nao encontrado. Faca login antes de gravar processos.");
     }
     return data.user;
@@ -674,6 +701,9 @@
     extra.storage = storage.storagePath ? "supabase" : (extra.storage || "");
     extra.storageBucket = storage.storageBucket || "";
     extra.storagePath = storage.storagePath || "";
+    arquivo.storage = extra.storage;
+    arquivo.storageBucket = extra.storageBucket;
+    arquivo.storagePath = extra.storagePath;
 
     const payload = {
       local_id: anexoLocalId,
@@ -968,7 +998,8 @@
       .single();
     if (verificado.error) throw verificado.error;
     if (!verificado.data?.id) throw new Error("Nao foi possivel confirmar a gravacao do processo no Supabase.");
-    return processoFromRow(verificado.data);
+    const completos = await loadProcessosCompletos();
+    return completos.find(item => item.supabaseId === processoId || item.id === verificado.data.local_id) || processoFromRow(verificado.data);
   }
 
   function itemRow(processoId, item, index, origem) {

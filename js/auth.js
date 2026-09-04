@@ -19,7 +19,12 @@
     if (!window.__supabaseClient) {
       const cfg = window.SUPABASE_CONFIG;
       window.__supabaseClient = window.supabase.createClient(cfg.url, cfg.publishableKey, {
-        db: { schema: cfg.schema || "public" }
+        db: { schema: cfg.schema || "public" },
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
       });
     }
     return window.__supabaseClient;
