@@ -4,6 +4,7 @@
 
 (() => {
   const MONEY_FIELDS = new Set(["valorEstimado", "resultadoValorHomologado"]);
+  const fornecedorSaveLocks = new Map();
 
   function requireClient() {
     if (!window.isSupabaseConfigured?.()) {
@@ -579,13 +580,21 @@
     if (!rows.length) return [];
 
     console.log("[SUPABASE][fornecedor_pessoas][INSERT]", { tabela: "fornecedor_pessoas", payload: rows });
-    const { data, error } = await client
-      .from("fornecedor_pessoas")
-      .insert(rows)
-      .select("*");
-    console.log("[SUPABASE][fornecedor_pessoas][INSERT_RESULT]", { data, error });
-    if (error) throw error;
-    return (data || []).map(pessoaFornecedorFromRow);
+    for (const row of rows) {
+      const result = await client
+        .from("fornecedor_pessoas")
+        .insert(row)
+        .select("*")
+        .maybeSingle();
+      console.log("[SUPABASE][fornecedor_pessoas][INSERT_RESULT]", { data: result.data, error: result.error });
+      if (result.error && result.error.code !== "23505") throw result.error;
+      if (result.error?.code === "23505") {
+        console.warn("[SUPABASE][fornecedor_pessoas][DUPLICADA_IGNORADA]", { fornecedorId, row, error: result.error });
+      }
+    }
+
+    const mapa = await listarPessoasPorFornecedorIds(client, [fornecedorId]);
+    return mapa.get(fornecedorId) || [];
   }
 
   async function listarPessoasFornecedor(fornecedorLocalId) {
@@ -601,7 +610,7 @@
     return mapa.get(alvo.data.id) || [];
   }
 
-  async function salvarFornecedor(fornecedor) {
+  async function salvarFornecedorSemFila(fornecedor) {
     const client = requireClient();
     await requireAuthenticatedUser();
     const payload = fornecedorPayload(fornecedor);
@@ -616,6 +625,22 @@
     if (error) throw error;
     const pessoas = await substituirPessoasFornecedor(client, data.id, fornecedor?.pessoas || []);
     return fornecedorFromRow(data, pessoas);
+  }
+
+  async function salvarFornecedor(fornecedor) {
+    const chave = onlyDigits(fornecedor?.cnpj) || fornecedor?.id || fornecedor?.local_id || localId("forn_lock");
+    const anterior = fornecedorSaveLocks.get(chave) || Promise.resolve();
+    const proximo = anterior
+      .catch(() => {})
+      .then(() => salvarFornecedorSemFila(fornecedor));
+    fornecedorSaveLocks.set(chave, proximo);
+    try {
+      return await proximo;
+    } finally {
+      if (fornecedorSaveLocks.get(chave) === proximo) {
+        fornecedorSaveLocks.delete(chave);
+      }
+    }
   }
 
   async function excluirFornecedor(localIdFornecedor) {
