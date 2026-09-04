@@ -79,6 +79,22 @@ create table if not exists public.fornecedor_pessoas (
   updated_at timestamptz not null default now()
 );
 
+create unique index if not exists fornecedor_pessoas_fornecedor_cpf_uidx
+on public.fornecedor_pessoas (
+  fornecedor_id,
+  regexp_replace(coalesce(cpf, ''), '\D', '', 'g')
+)
+where regexp_replace(coalesce(cpf, ''), '\D', '', 'g') <> '';
+
+create unique index if not exists fornecedor_pessoas_fornecedor_nome_tipo_obs_uidx
+on public.fornecedor_pessoas (
+  fornecedor_id,
+  lower(btrim(nome)),
+  lower(btrim(coalesce(tipo, ''))),
+  lower(btrim(coalesce(observacao, '')))
+)
+where regexp_replace(coalesce(cpf, ''), '\D', '', 'g') = '';
+
 create table if not exists public.processos (
   id uuid primary key default gen_random_uuid(),
   local_id text not null unique,

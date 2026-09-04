@@ -369,7 +369,9 @@
   }
 
   function normalizarPessoasFornecedor(pessoas) {
-    return Array.isArray(pessoas) ? pessoas.map(p => ({
+    const mapa = new Map();
+    (Array.isArray(pessoas) ? pessoas : []).forEach(p => {
+      const pessoa = {
       id: p.id || genId(),
       nome: p.nome || '',
       cpf: p.cpf || '',
@@ -378,7 +380,22 @@
       ativo: p.ativo !== false,
       criadoEm: p.criadoEm || p.created_at || new Date().toLocaleString('pt-BR'),
       atualizadoEm: p.atualizadoEm || p.updated_at || new Date().toLocaleString('pt-BR')
-    })) : [];
+      };
+      if (!pessoa.nome) return;
+      const cpf = onlyDigits(pessoa.cpf);
+      const chave = cpf
+        ? `cpf:${cpf}`
+        : `nome:${normalizarCadastro(pessoa.nome)}:${normalizarCadastro(pessoa.tipoVinculo)}:${normalizarCadastro(pessoa.observacao)}`;
+      const atual = mapa.get(chave);
+      mapa.set(chave, atual ? {
+        ...atual,
+        ...pessoa,
+        id: atual.id || pessoa.id,
+        criadoEm: atual.criadoEm || pessoa.criadoEm,
+        ativo: atual.ativo !== false || pessoa.ativo !== false
+      } : pessoa);
+    });
+    return Array.from(mapa.values());
   }
 
   function upsertFornecedor(info) {

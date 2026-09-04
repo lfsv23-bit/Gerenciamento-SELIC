@@ -220,6 +220,41 @@
     };
   }
 
+  function chavePessoaFornecedor(pessoa) {
+    const cpf = onlyDigits(pessoa?.cpf);
+    if (cpf) return `cpf:${cpf}`;
+    return [
+      "nome",
+      normalizarTexto(pessoa?.nome),
+      normalizarTexto(pessoa?.tipoVinculo || pessoa?.tipo || pessoa?.tipo_vinculo),
+      normalizarTexto(pessoa?.observacao)
+    ].join(":");
+  }
+
+  function deduplicarPessoasFornecedor(pessoas) {
+    const mapa = new Map();
+    (Array.isArray(pessoas) ? pessoas : []).forEach(pessoa => {
+      if (!pessoa?.nome) return;
+      const chave = chavePessoaFornecedor(pessoa);
+      const atual = mapa.get(chave);
+      if (!atual) {
+        mapa.set(chave, pessoa);
+        return;
+      }
+      mapa.set(chave, {
+        ...atual,
+        ...pessoa,
+        id: atual.id || pessoa.id,
+        local_id: atual.local_id || pessoa.local_id,
+        localId: atual.localId || pessoa.localId,
+        criadoEm: atual.criadoEm || pessoa.criadoEm,
+        created_at: atual.created_at || pessoa.created_at,
+        ativo: atual.ativo !== false || pessoa.ativo !== false
+      });
+    });
+    return Array.from(mapa.values());
+  }
+
   function pessoaFornecedorFromRow(row) {
     const extra = row?.extra && typeof row.extra === "object" ? { ...row.extra } : {};
     const situacao = row.situacao || extra.situacao || "";
@@ -525,11 +560,14 @@
       lista.push(pessoaFornecedorFromRow(row));
       mapa.set(row.fornecedor_id, lista);
     });
+    mapa.forEach((lista, fornecedorId) => {
+      mapa.set(fornecedorId, deduplicarPessoasFornecedor(lista));
+    });
     return mapa;
   }
 
   async function substituirPessoasFornecedor(client, fornecedorId, pessoas) {
-    const normalizadas = Array.isArray(pessoas) ? pessoas : [];
+    const normalizadas = deduplicarPessoasFornecedor(pessoas);
     console.log("[SUPABASE][fornecedor_pessoas][DELETE]", { tabela: "fornecedor_pessoas", fornecedorId });
     const del = await client.from("fornecedor_pessoas").delete().eq("fornecedor_id", fornecedorId);
     console.log("[SUPABASE][fornecedor_pessoas][DELETE_RESULT]", { data: del.data, error: del.error });
