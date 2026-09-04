@@ -1284,6 +1284,9 @@
     if (arquivo.id && arquivo.storage === 'indexedDB') {
       return `<button type="button"${classAttr} data-anexo-id="${escapeAttr(arquivo.id)}" data-anexo-nome="${escapeAttr(arquivo.nome || label)}">${escapeAttr(label)}</button>`;
     }
+    if (arquivo.storagePath || arquivo.storage_path) {
+      return `<button type="button"${classAttr} data-anexo-storage-bucket="${escapeAttr(arquivo.storageBucket || arquivo.storage_bucket || 'processos-anexos')}" data-anexo-storage-path="${escapeAttr(arquivo.storagePath || arquivo.storage_path)}" data-anexo-nome="${escapeAttr(arquivo.nome || label)}">${escapeAttr(label)}</button>`;
+    }
     if (arquivo.dataUrl) {
       return `<button type="button"${classAttr} data-anexo-url="${escapeAttr(arquivo.dataUrl)}" data-anexo-nome="${escapeAttr(arquivo.nome || label)}">${escapeAttr(label)}</button>`;
     }
@@ -1390,11 +1393,20 @@
   if (!window.__anexosIndexedDbHandler) {
     window.__anexosIndexedDbHandler = true;
     document.addEventListener('click', async (event) => {
-      const btn = event.target.closest('[data-anexo-id], [data-anexo-url]');
+      const btn = event.target.closest('[data-anexo-id], [data-anexo-url], [data-anexo-storage-path]');
       if (!btn) return;
       event.preventDefault();
       try {
-        if (btn.dataset.anexoId) {
+        if (btn.dataset.anexoStoragePath) {
+          if (!window.AppDatabase?.criarUrlAssinadaAnexo) {
+            throw new Error('Camada de anexos do Supabase não carregada.');
+          }
+          const url = await window.AppDatabase.criarUrlAssinadaAnexo(
+            btn.dataset.anexoStorageBucket || 'processos-anexos',
+            btn.dataset.anexoStoragePath
+          );
+          abrirVisualizadorPdf(url, btn.dataset.anexoNome || 'anexo.pdf');
+        } else if (btn.dataset.anexoId) {
           await visualizarAnexoIndexedDB(btn.dataset.anexoId);
         } else if (btn.dataset.anexoUrl) {
           abrirVisualizadorPdf(btn.dataset.anexoUrl, btn.dataset.anexoNome || 'anexo.pdf');
@@ -6660,7 +6672,7 @@ const cnpjAdesao = ataAdesaoSelecionada
 const item = {
   id: fld.idx.value || genId(),
   numero: fld.numero.value.trim(),
-  novo: !isEdicao,
+  novo: false,
         dataCriacao: fld.dataCriacao.value.trim(),
         objeto: fld.objeto.value.trim(),
         secretaria: fld.secretaria.value,

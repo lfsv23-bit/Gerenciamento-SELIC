@@ -568,38 +568,6 @@
     return data?.id || null;
   }
 
-  async function salvarAnexoMeta(client, arquivo, origem = "") {
-    if (!arquivo || typeof arquivo !== "object") return null;
-    const local = arquivo.id || arquivo.local_id || arquivo.localId || `${origem}_${arquivo.nome || arquivo.name || ""}_${arquivo.tamanho || arquivo.size || ""}`;
-    if (!String(local || "").trim() && !arquivo.nome && !arquivo.name) return null;
-    const anexoLocalId = localId("anexo", local);
-    const existente = await client
-      .from("anexos")
-      .select("id, storage_bucket, storage_path")
-      .eq("local_id", anexoLocalId)
-      .maybeSingle();
-    if (existente.error) throw existente.error;
-    const payload = {
-      local_id: anexoLocalId,
-      nome: arquivo.nome || arquivo.name || "",
-      tipo: arquivo.tipo || arquivo.type || "",
-      tamanho: arquivo.tamanho || arquivo.size || null,
-      storage_bucket: arquivo.storageBucket || arquivo.storage_bucket || existente.data?.storage_bucket || "",
-      storage_path: arquivo.storagePath || arquivo.storage_path || existente.data?.storage_path || arquivo.id || "",
-      origem,
-      extra: arquivo
-    };
-    console.log("[SUPABASE][anexos][UPSERT]", { payload });
-    const { data, error } = await client
-      .from("anexos")
-      .upsert(payload, { onConflict: "local_id" })
-      .select("id")
-      .single();
-    console.log("[SUPABASE][anexos][UPSERT_RESULT]", { data, error });
-    if (error) throw error;
-    return data?.id || null;
-  }
-
   function dataUrlToBlob(dataUrl, fallbackType = "application/octet-stream") {
     const [header, body] = String(dataUrl || "").split(",");
     if (!body) return null;
@@ -618,6 +586,129 @@
       .replace(/_+/g, "_")
       .replace(/^_+|_+$/g, "")
       .slice(0, 140) || "anexo";
+  }
+
+  function abrirBancoAnexosLocal() {
+    if (!window.indexedDB) return Promise.resolve(null);
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open("processosLicitatoriosAnexosDB", 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains("anexos")) {
+          db.createObjectStore("anexos", { keyPath: "id" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function carregarBlobAnexoLocal(id) {
+    if (!id) return null;
+    const db = await abrirBancoAnexosLocal();
+    if (!db) return null;
+    try {
+      const registro = await new Promise((resolve, reject) => {
+        const tx = db.transaction("anexos", "readonly");
+        const request = tx.objectStore("anexos").get(id);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error);
+      });
+      return registro?.blob || null;
+    } finally {
+      db.close();
+    }
+  }
+
+  async function prepararUploadAnexo(client, arquivo, anexoLocalId, existente, origem) {
+    const bucket = arquivo.storageBucket || arquivo.storage_bucket || existente?.storage_bucket || "processos-anexos";
+    const nome = arquivo.nome || arquivo.name || `${anexoLocalId}.pdf`;
+    const tipo = arquivo.tipo || arquivo.type || "application/octet-stream";
+    let storagePath = arquivo.storagePath || arquivo.storage_path || existente?.storage_path || "";
+    let blob = null;
+
+    if (arquivo.dataUrl) {
+      blob = dataUrlToBlob(arquivo.dataUrl, tipo);
+    } else if (arquivo.blob instanceof Blob) {
+      blob = arquivo.blob;
+    } else if (arquivo instanceof Blob) {
+      blob = arquivo;
+    } else if (arquivo.storage === "indexedDB" || arquivo.id) {
+      blob = await carregarBlobAnexoLocal(arquivo.id);
+    }
+
+    if (!blob) {
+      return {
+        storageBucket: storagePath ? bucket : (arquivo.storageBucket || arquivo.storage_bucket || existente?.storage_bucket || ""),
+        storagePath
+      };
+    }
+
+    storagePath = storagePath || `anexos/${anexoLocalId}/${safeStorageName(nome)}`;
+    console.log("[SUPABASE][anexos][STORAGE_UPLOAD]", { bucket, storagePath, nome, tipo, origem });
+    const upload = await client.storage
+      .from(bucket)
+      .upload(storagePath, blob, { contentType: tipo, upsert: true });
+    console.log("[SUPABASE][anexos][STORAGE_RESULT]", { data: upload.data, error: upload.error });
+    if (upload.error) throw upload.error;
+
+    return { storageBucket: bucket, storagePath };
+  }
+
+  async function salvarAnexoMeta(client, arquivo, origem = "") {
+    if (!arquivo || typeof arquivo !== "object") return null;
+    const local = arquivo.id || arquivo.local_id || arquivo.localId || `${origem}_${arquivo.nome || arquivo.name || ""}_${arquivo.tamanho || arquivo.size || ""}`;
+    if (!String(local || "").trim() && !arquivo.nome && !arquivo.name) return null;
+    const anexoLocalId = localId("anexo", local);
+    const existente = await client
+      .from("anexos")
+      .select("id, storage_bucket, storage_path")
+      .eq("local_id", anexoLocalId)
+      .maybeSingle();
+    if (existente.error) throw existente.error;
+
+    const storage = await prepararUploadAnexo(client, arquivo, anexoLocalId, existente.data, origem);
+    const extra = { ...(arquivo || {}) };
+    delete extra.blob;
+    delete extra.dataUrl;
+    extra.storage = storage.storagePath ? "supabase" : (extra.storage || "");
+    extra.storageBucket = storage.storageBucket || "";
+    extra.storagePath = storage.storagePath || "";
+
+    const payload = {
+      local_id: anexoLocalId,
+      nome: arquivo.nome || arquivo.name || "",
+      tipo: arquivo.tipo || arquivo.type || "",
+      tamanho: arquivo.tamanho || arquivo.size || null,
+      storage_bucket: storage.storageBucket || "",
+      storage_path: storage.storagePath || "",
+      origem,
+      extra
+    };
+    console.log("[SUPABASE][anexos][UPSERT]", { payload });
+    const { data, error } = await client
+      .from("anexos")
+      .upsert(payload, { onConflict: "local_id" })
+      .select("id")
+      .single();
+    console.log("[SUPABASE][anexos][UPSERT_RESULT]", { data, error });
+    if (error) throw error;
+    return data?.id || null;
+  }
+
+  async function criarUrlAssinadaAnexo(storageBucket, storagePath, expiresIn = 600) {
+    const bucket = String(storageBucket || "processos-anexos").trim();
+    const path = String(storagePath || "").trim();
+    if (!path) throw new Error("Anexo sem caminho no Supabase Storage.");
+    await requireAuthenticatedUser();
+    const result = await requireClient()
+      .storage
+      .from(bucket)
+      .createSignedUrl(path, expiresIn);
+    console.log("[SUPABASE][anexos][SIGNED_URL]", { bucket, path, data: result.data, error: result.error });
+    if (result.error) throw result.error;
+    if (!result.data?.signedUrl) throw new Error("O Supabase nao retornou a URL assinada do anexo.");
+    return result.data.signedUrl;
   }
 
   async function importarAnexoBackup(anexo, options = {}) {
@@ -1200,7 +1291,7 @@
       observacao: row.observacao || extra.observacao || "",
       valorEstimado: row.valor_estimado ?? extra.valorEstimado ?? null,
       resultadoValorHomologado: row.valor_homologado ?? extra.resultadoValorHomologado ?? "",
-      novo: false
+      novo: extra.novo === true
     };
   }
 
@@ -1639,6 +1730,7 @@
     listarTramitesInternos,
     salvarTramitesInternos,
     importarAnexoBackup,
+    criarUrlAssinadaAnexo,
     contarRegistros,
     obterAppSetting,
     salvarAppSetting,
