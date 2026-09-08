@@ -2663,6 +2663,19 @@ Excluir
               ${SECRETARIAS.map(s => `<option value="${s}">${s}</option>`).join('')}
             </select>
           </div>
+          <div class="field" style="margin-top:12px">
+            <label>Aplicar alteração</label>
+            <div class="assoc-scope-options">
+              <label>
+                <input type="radio" name="lic_assoc_scope" value="atual" checked>
+                <span>Apenas este processo</span>
+              </label>
+              <label>
+                <input type="radio" name="lic_assoc_scope" value="todos">
+                <span>Todos os processos com este interessado</span>
+              </label>
+            </div>
+          </div>
         </div>
         <div class="modal-foot">
           <button id="lic_assoc_cancel" class="btn">Cancelar</button>
@@ -3957,6 +3970,7 @@ formAditivo.addEventListener('submit', async (ev) => {
     const assocSave = container.querySelector('#lic_assoc_save');
     const assocInteressado = container.querySelector('#lic_assoc_interessado');
     const assocSelect = container.querySelector('#lic_assoc_select');
+    const assocScopeRadios = container.querySelectorAll('input[name="lic_assoc_scope"]');
 
 
 
@@ -5009,34 +5023,48 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
       btnAssocSecretaria.style.display = deveMostrar ? 'inline-block' : 'none';
     }
 
-    async function salvarAssociacaoInteressadoSecretaria(interessado, sigla) {
+    async function salvarAssociacaoInteressadoSecretaria(interessado, sigla, escopo = 'atual') {
       const processoId = fld.idx.value;
+      const chaveInteressado = normalizarChaveInteressado(interessado);
 
-      const map = loadSecretariaMap();
-      map[normalizarChaveInteressado(interessado)] = {
-        interessado,
-        secretaria: sigla,
-        criadoEm: new Date().toLocaleString('pt-BR')
-      };
-      await saveSecretariaMap(map);
+      if (escopo === 'todos') {
+        const map = loadSecretariaMap();
+        map[chaveInteressado] = {
+          interessado,
+          secretaria: sigla,
+          criadoEm: new Date().toLocaleString('pt-BR')
+        };
+        await saveSecretariaMap(map);
+      }
 
       fld.interessadoOriginal.value = interessado;
       fld.secretaria.value = sigla;
 
       let atualizados = 0;
       const processosAlterados = [];
-      data.forEach(item => {
-        const chaveItem = normalizarChaveInteressado(item.interessadoOriginal || item.secretaria);
-        if (chaveItem === normalizarChaveInteressado(interessado)) {
-          item.interessadoOriginal = interessado;
-          item.secretaria = sigla;
-          processosAlterados.push(item);
+
+      if (escopo === 'todos') {
+        data.forEach(item => {
+          const chaveItem = normalizarChaveInteressado(item.interessadoOriginal || item.secretaria);
+          if (chaveItem === chaveInteressado) {
+            item.interessadoOriginal = interessado;
+            item.secretaria = sigla;
+            processosAlterados.push(item);
+            atualizados++;
+          }
+        });
+      } else if (processoId) {
+        const atual = data.find(item => String(item.id) === String(processoId));
+        if (atual) {
+          atual.interessadoOriginal = interessado;
+          atual.secretaria = sigla;
+          processosAlterados.push(atual);
           atualizados++;
         }
-      });
+      }
 
       if (processoId && !atualizados) {
-        const atual = data.find(item => item.id === processoId);
+        const atual = data.find(item => String(item.id) === String(processoId));
         if (atual) {
           atual.interessadoOriginal = interessado;
           atual.secretaria = sigla;
@@ -5057,7 +5085,10 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
         window.__processosLicitatoriosData = data;
         renderTable();
         atualizarBotaoAssociacaoSecretaria();
-        alert(`Associação salva:\n${interessado} -> ${sigla}\n\n${atualizados} processo(s) atualizados agora.`);
+        const escopoTexto = escopo === 'todos'
+          ? `${atualizados} processo(s) atualizados agora.`
+          : (atualizados ? 'Apenas este processo foi atualizado agora.' : 'A associação será aplicada quando este processo for salvo.');
+        alert(`Associação salva:\n${interessado} -> ${sigla}\n\n${escopoTexto}`);
       } catch (error) {
         erroSupabaseVisivel('atualizar', error);
       }
@@ -5073,6 +5104,9 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
 
       assocInteressado.textContent = interessado;
       assocSelect.value = SECRETARIAS.includes(fld.secretaria.value) ? fld.secretaria.value : '';
+      assocScopeRadios.forEach(radio => {
+        radio.checked = radio.value === 'atual';
+      });
       dlgAssoc.showModal();
     });
 
@@ -5092,8 +5126,9 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
         return;
       }
 
+      const escopo = container.querySelector('input[name="lic_assoc_scope"]:checked')?.value || 'atual';
       dlgAssoc.close();
-      await salvarAssociacaoInteressadoSecretaria(interessado, sigla);
+      await salvarAssociacaoInteressadoSecretaria(interessado, sigla, escopo);
     });
 
     function abrirNovoProcessoComEtiqueta(etiqueta) {
