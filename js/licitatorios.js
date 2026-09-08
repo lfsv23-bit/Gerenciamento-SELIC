@@ -2604,6 +2604,25 @@ Ver Itens
 <input id="lic_fase" class="input">
 </div>
 
+<div class="field" style="grid-column:1/-1">
+<label>Etapa</label>
+<div class="process-etapas-box">
+  <div class="process-etapas-col">
+    <strong>Fase Interna</strong>
+    <label><input type="checkbox" data-process-etapa="Planejamento"> Planejamento</label>
+    <label><input type="checkbox" data-process-etapa="Cotação"> Cotação</label>
+    <label><input type="checkbox" data-process-etapa="Preparação/Adequações"> Preparação/Adequações</label>
+    <label><input type="checkbox" data-process-etapa="Edital"> Edital</label>
+  </div>
+  <div class="process-etapas-col">
+    <strong>Fase Externa</strong>
+    <label><input type="checkbox" data-process-etapa="Licitação"> Licitação</label>
+    <label><input type="checkbox" data-process-etapa="Resultado"> Resultado</label>
+    <label><input type="checkbox" data-process-etapa="Homologação"> Homologação</label>
+  </div>
+</div>
+</div>
+
 </div>
 
 </div>
@@ -3883,6 +3902,19 @@ formAditivo.addEventListener('submit', async (ev) => {
       credFantasia: container.querySelector('#lic_cred_fantasia')
     };
 
+    function coletarEtapasProcessoSituacao() {
+      return Array.from(container.querySelectorAll('[data-process-etapa]:checked'))
+        .map(input => input.dataset.processEtapa)
+        .filter(Boolean);
+    }
+
+    function preencherEtapasProcessoSituacao(etapas) {
+      const selecionadas = new Set(Array.isArray(etapas) ? etapas : []);
+      container.querySelectorAll('[data-process-etapa]').forEach(input => {
+        input.checked = selecionadas.has(input.dataset.processEtapa);
+      });
+    }
+
     const credItensContainer = container.querySelector('#cred_itens_container');
     const credItensFile = container.querySelector('#lic_cred_itens_file');
     const btnCredImportItens = container.querySelector('#lic_cred_import_itens');
@@ -5080,6 +5112,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
       fld.volumes.value = '';
       fld.situacao.value = '';
       fld.fase.value = '';
+      preencherEtapasProcessoSituacao([]);
       fld.tipoProcesso.value = '';
       fld.credTipo.value = '';
       fld.credNumero.value = '';
@@ -5156,6 +5189,7 @@ if(campoQtdItens) campoQtdItens.value = itensProcesso.length;
         modalidade: '',
         situacao: '',
         fase: '',
+        etapasProcesso: [],
         tipoProcesso: '',
         credTipo: '',
         credNumero: '',
@@ -5308,6 +5342,7 @@ const normalized = imported.map(it => ({
   modalidade: it.modalidade || '',
   situacao: it.situacao || '',
   fase: it.fase || '',
+  etapasProcesso: Array.isArray(it.etapasProcesso) ? it.etapasProcesso : [],
   editalForma: it.editalForma || '',
   editalNumero: it.editalNumero || '',
   editalValorEstimado: it.editalValorEstimado || '',
@@ -5426,6 +5461,7 @@ if (supabaseProcessosDisponivel()) {
       fld.volumes.value = '';
       fld.situacao.value = '';
       fld.fase.value = '';
+      preencherEtapasProcessoSituacao([]);
 
 
 
@@ -6702,6 +6738,7 @@ const item = {
         
         situacao: fld.situacao.value.trim(),
         fase: fld.fase.value.trim(),
+        etapasProcesso: coletarEtapasProcessoSituacao(),
         fasesAtivas: coletarFasesAtivasProcesso(),
         etapasConcluidas: coletarEtapasConcluidas(),
         publicacoes: publicacoesColetadas,
@@ -6929,6 +6966,7 @@ fld.observacao.value = item.observacao || "";
 fld.volumes.value = item.volumes || "";
 fld.situacao.value = item.situacao || "";
 fld.fase.value = item.fase || "";
+preencherEtapasProcessoSituacao(item.etapasProcesso || []);
 itensProcesso = Array.isArray(item.itensProcesso) ? item.itensProcesso : [];
 atualizarBotaoAssociacaoSecretaria();
 
@@ -7391,6 +7429,7 @@ ${registroPrecoHtml}
 
 <b>Situação:</b> ${item.situacao || ""}<br>
 <b>Fase:</b> ${item.fase || ""}<br>
+${Array.isArray(item.etapasProcesso) && item.etapasProcesso.length ? `<b>Etapa:</b> ${item.etapasProcesso.map(etapa => escHtml(etapa)).join(", ")}<br>` : ""}
 
 `;
 
