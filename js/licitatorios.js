@@ -3043,7 +3043,9 @@ Excluir
 
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
 <button type="button" id="btnImportCotacaoEtp" class="btn">Importar itens do ETP</button>
+<button type="button" id="btnImportCotacaoTxt" class="btn">Importar TXT da Cotação</button>
 <button type="button" id="btnAddCotacao" class="btn primary">+ Adicionar item</button>
+<input type="file" id="lic_cotacao_txt_file" accept=".txt,text/plain" style="display:none">
 </div>
 
 <div id="cot_itens_modal_body"></div>
@@ -5980,6 +5982,8 @@ const btnCotacaoItensClose = container.querySelector('#lic_cot_itens_close');
 const cotItensModalBody = container.querySelector('#cot_itens_modal_body');
 const btnAddCotacao = container.querySelector('#btnAddCotacao');
 const btnImportCotacaoEtp = container.querySelector('#btnImportCotacaoEtp');
+const btnImportCotacaoTxt = container.querySelector('#btnImportCotacaoTxt');
+const fileImportCotacaoTxt = container.querySelector('#lic_cotacao_txt_file');
 let cotItens = [];
 
 btnAbrirCotacaoItens?.addEventListener('click', () => abrirDialogInterno(dlgCotacaoItens, dlg));
@@ -5998,7 +6002,8 @@ function novoItemCotacao(base = {}) {
     descricao: base.descricao || "",
     quantidade: base.quantidade || base.qtd || "",
     unidade: base.unidade || "",
-    pesquisas
+    pesquisas,
+    totalTxt: base.totalTxt ?? null
   };
 }
 
@@ -6208,6 +6213,86 @@ function tabelaParaItensCotacao(rows) {
   })).filter(item => item.descricao || item.quantidade || item.unidade);
 }
 
+function normalizarTextoComparacao(value) {
+  return normalizarCadastro(value)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseCotacaoTxt(texto) {
+  const linhas = parseItensEditalTxt(texto);
+  if (!linhas.length) return [];
+  const header = linhas[0].map(cell => normalizarCadastro(cell));
+  const temCabecalho = header.some(cell => /DESCRICAO|OBJETO|QTD|QTDE|UNIDADE|MEDIA|TOTAL|PRECO|VALOR/.test(cell));
+  const dados = temCabecalho ? linhas.slice(1) : linhas;
+  const cabecalho = temCabecalho ? linhas[0] : [];
+  const normalizado = temCabecalho ? header : [];
+  const idxDesc = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["DESCRIÇÃO", "DESCRICAO", "PRODUTO", "SERVIÇO", "SERVICO", "OBJETO"]) : 0;
+  const idxQtd = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["QUANTIDADE", "QTDE", "QTD"]) : 1;
+  const idxUnidade = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["UNIDADE", "UN.", "UNID", "MEDIDA"]) : 2;
+  const idxMedia = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["MÉDIA UNIT", "MEDIA UNIT", "MÉDIA", "MEDIA"]) : -1;
+  const idxTotal = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["TOTAL MÉDIO", "TOTAL MEDIO", "VALOR TOTAL", "TOTAL"]) : -1;
+  const inicioPesquisas = Math.max(idxDesc, idxQtd, idxUnidade) + 1;
+  const fimPesquisas = idxMedia >= 0 ? idxMedia : (idxTotal >= 0 ? idxTotal : cabecalho.length);
+  const colunasPesquisa = temCabecalho
+    ? cabecalho
+        .map((nome, index) => ({ nome: String(nome || '').trim(), index }))
+        .filter(col => col.index >= inicioPesquisas && col.index < fimPesquisas && col.nome && !/^\s*$/.test(col.nome) && !/MEDIA|MÉDIA|TOTAL|QTD|QTDE|QUANTIDADE|UNID|UNIDADE|DESCRICAO|DESCRIÇÃO/.test(normalizado[col.index] || ''))
+    : [];
+
+  return dados.map(row => {
+    const pesquisas = colunasPesquisa
+      .map(col => ({
+        fonte: col.nome,
+        valor: normalizarValorImportado(row[col.index])
+      }))
+      .filter(p => p.fonte && parseBRLToNumber(p.valor) !== null);
+    const media = idxMedia >= 0 ? normalizarValorImportado(row[idxMedia]) : "";
+    if (!pesquisas.length && media) pesquisas.push({ fonte: "Média Unit.", valor: media });
+    return novoItemCotacao({
+      descricao: String(row[idxDesc >= 0 ? idxDesc : 0] || "").trim(),
+      quantidade: normalizarQuantidadeImportada(row[idxQtd >= 0 ? idxQtd : 1]),
+      unidade: String(row[idxUnidade >= 0 ? idxUnidade : 2] || "").trim(),
+      pesquisas,
+      totalTxt: idxTotal >= 0 ? parseBRLToNumber(row[idxTotal]) : null
+    });
+  }).filter(item => item.descricao || item.quantidade || item.unidade || item.pesquisas.length);
+}
+
+function validarCotacaoContraEtp(importados) {
+  const bases = Array.isArray(itensProcesso) ? itensProcesso : [];
+  if (!bases.length) return { ok: true, avisos: [] };
+  const avisos = [];
+  if (bases.length !== importados.length) {
+    avisos.push(`Quantidade de itens diferente: ETP tem ${bases.length}, cotação tem ${importados.length}.`);
+  }
+  const total = Math.max(bases.length, importados.length);
+  for (let index = 0; index < total; index++) {
+    const base = bases[index];
+    const cot = importados[index];
+    if (!base || !cot) continue;
+    const divergencias = [];
+    if (normalizarTextoComparacao(base.descricao) !== normalizarTextoComparacao(cot.descricao)) divergencias.push("descrição");
+    if ((parseBRLToNumber(base.quantidade) || 0) !== (parseBRLToNumber(cot.quantidade) || 0)) divergencias.push("quantidade");
+    if (normalizarTextoComparacao(base.unidade) !== normalizarTextoComparacao(cot.unidade)) divergencias.push("unidade");
+    if (divergencias.length) {
+      avisos.push(`Item ${index + 1}: divergência em ${divergencias.join(", ")}.`);
+    }
+  }
+  return { ok: !avisos.length, avisos };
+}
+
+function validarTotaisCotacaoTxt(importados) {
+  return importados
+    .map((item, index) => {
+      if (item.totalTxt === null || item.totalTxt === undefined) return null;
+      const calculado = Math.round((((item.resultadoUnitario || 0) * (parseBRLToNumber(item.quantidade) || 0)) + Number.EPSILON) * 100) / 100;
+      const diferenca = Math.abs(calculado - item.totalTxt);
+      return diferenca > 0.02 ? `Item ${index + 1}: total do TXT ${formatBRLDisplay(item.totalTxt)}, calculado ${formatBRLDisplay(calculado)}.` : null;
+    })
+    .filter(Boolean);
+}
+
 function obterItensBaseParaCotacao() {
   const bases = [];
   if (Array.isArray(itensProcesso) && itensProcesso.length) bases.push(...itensProcesso.map(normalizarItemParaCotacao).filter(Boolean));
@@ -6248,6 +6333,45 @@ btnImportCotacaoEtp?.addEventListener('click', () => {
   cotItens = itens;
   renderCotacaoItens();
   showToast(`${itens.length} item(ns) importado(s) para cotação.`);
+});
+
+btnImportCotacaoTxt?.addEventListener('click', () => fileImportCotacaoTxt?.click());
+
+fileImportCotacaoTxt?.addEventListener('change', async () => {
+  const file = fileImportCotacaoTxt.files?.[0];
+  if (!file) return;
+  try {
+    const texto = await file.text();
+    const importados = parseCotacaoTxt(texto);
+    if (!importados.length) return alert('Nenhum item de cotação encontrado no TXT selecionado.');
+
+    const validacaoEtp = validarCotacaoContraEtp(importados);
+    if (!validacaoEtp.ok) {
+      const detalhes = validacaoEtp.avisos.slice(0, 8).join('\n');
+      const restante = validacaoEtp.avisos.length > 8 ? `\n... mais ${validacaoEtp.avisos.length - 8} divergência(s).` : '';
+      const continuar = confirm(`A cotação importada possui divergências em relação aos itens do ETP:\n\n${detalhes}${restante}\n\nDeseja importar mesmo assim?`);
+      if (!continuar) return;
+    }
+
+    if (cotItens.length && !confirm('Substituir os itens cotados atuais pelos itens importados do TXT?')) return;
+
+    cotItens = importados;
+    calcularCotacaoItens();
+    const avisosTotais = validarTotaisCotacaoTxt(cotItens);
+    renderCotacaoItens();
+    atualizarEtapasConcluidas();
+    if (avisosTotais.length) {
+      console.warn('[Cotação TXT] Divergências entre total do TXT e total calculado:', avisosTotais);
+      alert(`Cotação importada, mas alguns totais do TXT ficaram diferentes do cálculo do sistema:\n\n${avisosTotais.slice(0, 8).join('\n')}${avisosTotais.length > 8 ? `\n... mais ${avisosTotais.length - 8} divergência(s).` : ''}`);
+    } else {
+      showToast(`${cotItens.length} item(s) de cotação importado(s) do TXT.`);
+    }
+  } catch (error) {
+    console.error('Erro ao importar TXT da cotação:', error);
+    alert('Não foi possível importar o TXT da cotação. Verifique o arquivo e tente novamente.');
+  } finally {
+    fileImportCotacaoTxt.value = '';
+  }
 });
 
 container.querySelector('#lic_cot_tipo')?.addEventListener('change', calcularCotacaoItens);
