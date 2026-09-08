@@ -69,10 +69,23 @@
   function parseNumber(value) {
     if (value === null || value === undefined || value === "") return null;
     if (typeof value === "number") return Number.isFinite(value) ? value : null;
-    const clean = String(value)
-      .replace(/[R$\s.]/g, "")
-      .replace(",", ".")
-      .replace(/[^\d.-]/g, "");
+    let clean = String(value).trim().replace(/[R$\s]/g, "").replace(/[^\d,.-]/g, "");
+    if (!clean) return null;
+    const lastComma = clean.lastIndexOf(",");
+    const lastDot = clean.lastIndexOf(".");
+    if (lastComma >= 0 && lastDot >= 0) {
+      const decimalSep = lastComma > lastDot ? "," : ".";
+      const thousandSep = decimalSep === "," ? "." : ",";
+      clean = clean.replace(new RegExp(`\\${thousandSep}`, "g"), "").replace(decimalSep, ".");
+    } else if (lastComma >= 0) {
+      clean = /^\d{1,3}(,\d{3})+$/.test(clean)
+        ? clean.replace(/,/g, "")
+        : clean.replace(",", ".");
+    } else if (lastDot >= 0) {
+      clean = /^\d{1,3}(\.\d{3})+$/.test(clean)
+        ? clean.replace(/\./g, "")
+        : clean;
+    }
     const num = Number(clean);
     return Number.isFinite(num) ? num : null;
   }

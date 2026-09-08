@@ -1475,10 +1475,36 @@
     if (str === null || str === undefined) return null;
     const s = String(str).trim();
     if (!s) return null;
-    // remove thousand separators and convert comma to dot
-    const cleaned = s.replace(/\./g, '').replace(',', '.').replace(/[^\d.-]/g,'');
+    let cleaned = s.replace(/[R$\s]/g, '').replace(/[^\d,.-]/g,'');
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+    if (lastComma >= 0 && lastDot >= 0) {
+      const decimalSep = lastComma > lastDot ? ',' : '.';
+      const thousandSep = decimalSep === ',' ? '.' : ',';
+      cleaned = cleaned.replace(new RegExp(`\\${thousandSep}`, 'g'), '').replace(decimalSep, '.');
+    } else if (lastComma >= 0) {
+      cleaned = /^\d{1,3}(,\d{3})+$/.test(cleaned)
+        ? cleaned.replace(/,/g, '')
+        : cleaned.replace(',', '.');
+    } else if (lastDot >= 0) {
+      cleaned = /^\d{1,3}(\.\d{3})+$/.test(cleaned)
+        ? cleaned.replace(/\./g, '')
+        : cleaned;
+    }
     const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
+  }
+
+  function normalizarValorImportado(value) {
+    const numero = parseBRLToNumber(value);
+    return numero === null ? String(value || '').trim() : formatBRLDisplay(numero);
+  }
+
+  function normalizarQuantidadeImportada(value) {
+    const raw = String(value || '').trim();
+    const numero = parseBRLToNumber(raw);
+    if (numero === null) return raw;
+    return Number.isInteger(numero) ? String(numero) : String(numero).replace('.', ',');
   }
 
   /* ---------- initLicitatorios (UI) ---------- */
@@ -4032,8 +4058,8 @@ function itensProcessoDoTxt(texto) {
 
   return dados.map(row => ({
     descricao: String(row[idxDesc >= 0 ? idxDesc : 0] || "").trim(),
-    valor: String(row[idxValor >= 0 ? idxValor : 1] || "").trim(),
-    quantidade: String(row[idxQtd >= 0 ? idxQtd : 2] || "").trim(),
+    valor: normalizarValorImportado(row[idxValor >= 0 ? idxValor : 1]),
+    quantidade: normalizarQuantidadeImportada(row[idxQtd >= 0 ? idxQtd : 2]),
     unidade: String(row[idxUnidade >= 0 ? idxUnidade : 3] || "").trim()
   })).filter(item => item.descricao || item.valor || item.quantidade || item.unidade);
 }
@@ -4265,13 +4291,9 @@ let total = 0;
 
 itensProcesso.forEach(item => {
 
-let valor = item.valor || "0";
+let valor = parseBRLToNumber(item.valor || "0") || 0;
 
-valor = valor.replace(/\./g,'').replace(',','.');
-
-valor = parseFloat(valor) || 0;
-
-let qtd = parseFloat(item.quantidade) || 0;
+let qtd = parseBRLToNumber(item.quantidade) || 0;
 
 total += valor * qtd;
 
