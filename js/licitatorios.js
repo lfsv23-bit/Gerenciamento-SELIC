@@ -10079,6 +10079,22 @@ atualizarEtapasConcluidas();
       ];
     }
 
+    async function atualizarCacheProcessosIrp(processoId) {
+      const timeout = new Promise(resolve => setTimeout(() => resolve(null), 8000));
+      const consulta = carregarProcessosLicitatoriosFonte({ silencioso: true }).catch(error => {
+        console.error('[IRP] Não foi possível atualizar os processos antes da importação.', error);
+        return null;
+      });
+      const atualizados = await Promise.race([consulta, timeout]);
+      if (!Array.isArray(atualizados)) {
+        console.warn('[IRP] Atualização dos processos demorou ou falhou. Usando dados já carregados na tela.');
+        return;
+      }
+      processosCategoriaCache = atualizados;
+      carregarProcessosGeradoresIrp(processoId);
+      campos.processoGerador.value = processoId;
+    }
+
     async function importarItensHomologadosParaIrp(botao = null) {
       console.log('[IRP] Clique no botão de importar homologados recebido.');
       const processoId = campos.processoGerador.value;
@@ -10092,37 +10108,46 @@ atualizarEtapasConcluidas();
       showToast('Buscando itens homologados do processo gerador...');
 
       try {
-        processosCategoriaCache = await carregarProcessosLicitatoriosFonte({ silencioso: true });
-        carregarProcessosGeradoresIrp(processoId);
-        campos.processoGerador.value = processoId;
+        let processo = buscarProcessoGeradorIrp(processoId);
+        let resultado = processo ? linhasResultadoHomologadasIrp(processo) : { linhas: [], fallback: false };
+
+        if (!resultado.linhas.length) {
+          await atualizarCacheProcessosIrp(processoId);
+          processo = buscarProcessoGeradorIrp(processoId);
+          resultado = processo ? linhasResultadoHomologadasIrp(processo) : { linhas: [], fallback: false };
+        }
+
+        console.log('[IRP] Importar homologados do processo gerador', {
+          processoId,
+          processoEncontrado: !!processo,
+          totalResultadoItens: Array.isArray(processo?.resultadoItens) ? processo.resultadoItens.length : 0,
+          totalLinhasImportaveis: resultado.linhas.length,
+          usandoFallback: resultado.fallback,
+          resultadoItens: processo?.resultadoItens
+        });
+        if (!processo) return alert('Processo gerador não encontrado. Atualize a página e tente novamente.');
+
+        const { linhas, fallback } = resultado;
+        if (!linhas.length) {
+          return alert('O processo gerador selecionado ainda não possui itens com resultado preenchido para importar. Verifique se os itens estão salvos no bloco Resultado/Homologação.');
+        }
+
+        if (fallback && !confirm('Não encontrei itens marcados como ACEITO no Resultado. Deseja importar os itens preenchidos que não estão como DESERTO?')) return;
+
+        const itensHomologados = montarTabelaIrpPorLinhasResultado(linhas);
+        if (itensDraft.length && !confirm('Substituir os itens atuais da IRP pelos itens homologados do processo gerador?')) return;
+
+        itensDraft = itensHomologados;
+        renderItensDraft();
+        showToast(`${contarItensTabela(itensDraft)} item(s) homologado(s) importado(s) para a IRP.`);
       } catch (error) {
-        console.error('[IRP] Não foi possível atualizar os processos antes da importação.', error);
-      }
-
-      const processo = buscarProcessoGeradorIrp(processoId);
-      console.log('[IRP] Importar homologados do processo gerador', {
-        processoId,
-        processo,
-        resultadoItens: processo?.resultadoItens
-      });
-      if (!processo) return alert('Processo gerador não encontrado. Atualize a página e tente novamente.');
-
-      const { linhas, fallback } = linhasResultadoHomologadasIrp(processo);
-      if (!linhas.length) {
-        return alert('O processo gerador selecionado ainda não possui itens com resultado preenchido para importar.');
-      }
-
-      if (fallback && !confirm('Não encontrei itens marcados como ACEITO no Resultado. Deseja importar os itens preenchidos que não estão como DESERTO?')) return;
-
-      const itensHomologados = montarTabelaIrpPorLinhasResultado(linhas);
-      if (itensDraft.length && !confirm('Substituir os itens atuais da IRP pelos itens homologados do processo gerador?')) return;
-
-      itensDraft = itensHomologados;
-      renderItensDraft();
-      showToast(`${contarItensTabela(itensDraft)} item(s) homologado(s) importado(s) para a IRP.`);
-      if (botao) {
-        botao.disabled = false;
-        botao.textContent = textoOriginal;
+        console.error('[IRP] Erro ao importar itens homologados.', error);
+        alert('Não foi possível importar os itens homologados.\n\nDetalhe: ' + (error?.message || error));
+      } finally {
+        if (botao) {
+          botao.disabled = false;
+          botao.textContent = textoOriginal;
+        }
       }
     }
 
@@ -10354,10 +10379,7 @@ atualizarEtapasConcluidas();
       const botao = event.target.closest('#irp_import_homologados');
       if (!botao || !container.contains(botao)) return;
       event.preventDefault();
-      importarItensHomologadosParaIrp(botao).finally(() => {
-        botao.disabled = false;
-        botao.textContent = 'Importar homologados do processo gerador';
-      });
+      importarItensHomologadosParaIrp(botao);
     });
     container.querySelector('#irp_itens_file').addEventListener('change', async () => {
       const file = container.querySelector('#irp_itens_file').files[0];
