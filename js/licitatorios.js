@@ -6399,8 +6399,49 @@ function novoItemResultado(base = {}) {
     pessoaVinculadaTipo: base.pessoaVinculadaTipo || "",
     situacao: base.situacao || "",
     valorUnitario: base.valorUnitario || base.valor || "",
-    valorTotal: base.valorTotal || ""
+    valorTotal: base.valorTotal || "",
+    divisoesResultado: Array.isArray(base.divisoesResultado)
+      ? base.divisoesResultado.map(div => novoResultadoDivisao(div))
+      : []
   };
+}
+
+function novoResultadoDivisao(base = {}) {
+  return {
+    id: base.id || genId(),
+    quantidade: base.quantidade || base.qtd || "",
+    valorUnitario: base.valorUnitario || base.valor || "",
+    valorTotal: base.valorTotal || "",
+    fornecedorId: base.fornecedorId || "",
+    cnpj: base.cnpj || base.fornecedorCnpj || "",
+    razaoSocial: base.razaoSocial || base.fornecedorRazao || "",
+    nomeFantasia: base.nomeFantasia || base.fornecedorFantasia || "",
+    pessoaVinculadaId: base.pessoaVinculadaId || "",
+    pessoaVinculadaNome: base.pessoaVinculadaNome || "",
+    pessoaVinculadaTipo: base.pessoaVinculadaTipo || "",
+    situacao: base.situacao || ""
+  };
+}
+
+function linhasResultadoItem(item, index = 0) {
+  if (Array.isArray(item?.divisoesResultado) && item.divisoesResultado.length) {
+    return item.divisoesResultado.map((divisao, divisaoIndex) => ({
+      ...item,
+      ...divisao,
+      descricao: item.descricao,
+      unidade: item.unidade,
+      itemIndex: index,
+      divisaoIndex,
+      itemNumero: `${index + 1}.${divisaoIndex + 1}`
+    }));
+  }
+  return [{ ...item, itemIndex: index, divisaoIndex: null, itemNumero: String(index + 1) }];
+}
+
+function linhasResultadoProcesso(processo) {
+  return Array.isArray(processo?.resultadoItens)
+    ? processo.resultadoItens.flatMap((item, index) => linhasResultadoItem(item, index))
+    : [];
 }
 
 function normalizarItemParaResultado(item) {
@@ -6439,15 +6480,29 @@ function obterItensBaseParaResultado() {
 function calcularResultadoItens() {
   let totalGeral = 0;
   resultadoItens.forEach(item => {
-    const unitario = Math.round(((parseBRLToNumber(item.valorUnitario) || 0) + Number.EPSILON) * 100) / 100;
-    const quantidade = parseBRLToNumber(item.quantidade) || 0;
-    item.valorTotal = Math.round(((unitario * quantidade) + Number.EPSILON) * 100) / 100;
-    if (normalizarCadastro(item.situacao) !== 'DESERTO') totalGeral += item.valorTotal;
+    if (Array.isArray(item.divisoesResultado) && item.divisoesResultado.length) {
+      item.valorTotal = item.divisoesResultado.reduce((soma, divisao) => {
+        const unitarioDivisao = Math.round(((parseBRLToNumber(divisao.valorUnitario) || 0) + Number.EPSILON) * 100) / 100;
+        const quantidadeDivisao = parseBRLToNumber(divisao.quantidade) || 0;
+        divisao.valorTotal = Math.round(((unitarioDivisao * quantidadeDivisao) + Number.EPSILON) * 100) / 100;
+        return normalizarCadastro(divisao.situacao) === 'DESERTO' ? soma : soma + divisao.valorTotal;
+      }, 0);
+      totalGeral += item.valorTotal;
+    } else {
+      const unitario = Math.round(((parseBRLToNumber(item.valorUnitario) || 0) + Number.EPSILON) * 100) / 100;
+      const quantidade = parseBRLToNumber(item.quantidade) || 0;
+      item.valorTotal = Math.round(((unitario * quantidade) + Number.EPSILON) * 100) / 100;
+      if (normalizarCadastro(item.situacao) !== 'DESERTO') totalGeral += item.valorTotal;
+    }
   });
   resultadoItensContainer?.querySelectorAll('[data-res-item]').forEach(card => {
     const item = resultadoItens[Number(card.dataset.resItem)];
     const total = card.querySelector('[data-res-total]');
     if (item && total) total.textContent = formatBRLDisplay(item.valorTotal || 0) || "0,00";
+    card.querySelectorAll('[data-res-divisao-total]').forEach(el => {
+      const divisao = item?.divisoesResultado?.[Number(el.dataset.resDivisaoTotal)];
+      if (divisao) el.textContent = formatBRLDisplay(divisao.valorTotal || 0) || "0,00";
+    });
   });
   const campoValorHomologado = container.querySelector('#lic_resultado_valor_homologado');
   if (campoValorHomologado) campoValorHomologado.value = formatBRLDisplay(totalGeral) || "";
@@ -6461,7 +6516,7 @@ function renderHomologacaoItens() {
   if (!homologacaoItensContainer) return;
   const filtro = homologacaoFiltroSituacao?.value || "";
   const itens = resultadoItens
-    .map((item, index) => ({ item, index }))
+    .flatMap((item, index) => linhasResultadoItem(item, index).map(linha => ({ item: linha, index, divisaoIndex: linha.divisaoIndex })))
     .filter(({ item }) => !filtro || normalizarCadastro(item.situacao) === normalizarCadastro(filtro));
 
   if (!resultadoItens.length) {
@@ -6485,9 +6540,9 @@ function renderHomologacaoItens() {
           </tr>
         </thead>
         <tbody>
-          ${itens.map(({ item, index }) => `
+          ${itens.map(({ item, index, divisaoIndex }) => `
             <tr class="${normalizarCadastro(item.situacao) === 'DESERTO' ? 'homologacao-deserto' : ''}">
-              <td>${index + 1}</td>
+              <td>${index + 1}${divisaoIndex !== null ? `.${divisaoIndex + 1}` : ''}</td>
               <td>${escHtml(item.descricao || '')}</td>
               <td>${escHtml(item.unidade || '')}</td>
               <td>${escHtml(item.quantidade || '')}</td>
@@ -6503,15 +6558,31 @@ function renderHomologacaoItens() {
   ` : '<div class="muted" style="font-size:12px">Nenhum item encontrado para a situação selecionada.</div>';
 }
 
-function preencherFornecedorResultadoPorCnpj(index) {
+function alvoResultadoFornecedor(index, divisaoIndex = null) {
   const item = resultadoItens[index];
+  if (!item) return null;
+  if (divisaoIndex !== null && divisaoIndex !== undefined) {
+    return item.divisoesResultado?.[Number(divisaoIndex)] || null;
+  }
+  return item;
+}
+
+function preencherFornecedorResultadoPorCnpj(index, divisaoIndex = null) {
+  const item = alvoResultadoFornecedor(index, divisaoIndex);
   if (!item || onlyDigits(item.cnpj).length !== 14) return;
   const cnpjDigits = onlyDigits(item.cnpj);
-  const outroItem = resultadoItens.find((res, resIndex) =>
-    resIndex !== index &&
-    onlyDigits(res.cnpj) === cnpjDigits &&
-    (res.razaoSocial || res.nomeFantasia)
-  );
+  const outrosAlvos = resultadoItens.flatMap((res, resIndex) => {
+    const alvos = [{ alvo: res, resIndex, divisaoIndex: null }];
+    if (Array.isArray(res.divisoesResultado)) {
+      res.divisoesResultado.forEach((div, divIndex) => alvos.push({ alvo: div, resIndex, divisaoIndex: divIndex }));
+    }
+    return alvos;
+  });
+  const outroItem = outrosAlvos.find(registro =>
+    !(registro.resIndex === index && String(registro.divisaoIndex) === String(divisaoIndex)) &&
+    onlyDigits(registro.alvo.cnpj) === cnpjDigits &&
+    (registro.alvo.razaoSocial || registro.alvo.nomeFantasia)
+  )?.alvo;
   if (outroItem) {
     Object.assign(item, {
       cnpj: formatCnpj(outroItem.cnpj),
@@ -6539,8 +6610,8 @@ function preencherFornecedorResultadoPorCnpj(index) {
   showToast(`Fornecedor localizado: ${fornecedor.razaoSocial || fornecedor.nomeFantasia || fornecedor.cnpj}`);
 }
 
-function abrirModalFornecedorResultado(index) {
-  const item = resultadoItens[index];
+function abrirModalFornecedorResultado(index, divisaoIndex = null) {
+  const item = alvoResultadoFornecedor(index, divisaoIndex);
   if (!item) return;
   const fornecedor = buscarFornecedorPorCnpj(item.cnpj);
   const pessoas = normalizarPessoasFornecedor(fornecedor?.pessoas).filter(p => p.ativo !== false);
@@ -6664,6 +6735,56 @@ function abrirModalFornecedorResultado(index) {
   dlgFornecedor.showModal();
 }
 
+function renderDivisoesResultado(item, index) {
+  if (!Array.isArray(item.divisoesResultado) || !item.divisoesResultado.length) return '';
+  const quantidadeOriginal = parseBRLToNumber(item.quantidade) || 0;
+  const quantidadeDividida = item.divisoesResultado.reduce((soma, divisao) => soma + (parseBRLToNumber(divisao.quantidade) || 0), 0);
+  const diferenca = Math.round(((quantidadeOriginal - quantidadeDividida) + Number.EPSILON) * 1000) / 1000;
+  return `
+    <div class="resultado-divisoes">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <strong>Divisão do resultado</strong>
+        <span class="muted">Quantidade dividida: ${escHtml(String(quantidadeDividida).replace('.', ','))} de ${escHtml(item.quantidade || '')}${diferenca ? ` | Diferença: ${escHtml(String(diferenca).replace('.', ','))}` : ''}</span>
+      </div>
+      ${item.divisoesResultado.map((divisao, divisaoIndex) => `
+        <div class="resultado-divisao-row" data-res-divisao="${divisaoIndex}">
+          <div class="field">
+            <label>Quantidade</label>
+            <input class="input res-divisao-quantidade" data-res-divisao-field="quantidade" value="${escHtml(divisao.quantidade || '')}" placeholder="Ex: 500">
+          </div>
+          <div class="field">
+            <label>Valor unitário</label>
+            <input class="input res-divisao-valor" data-res-divisao-field="valorUnitario" value="${escHtml(divisao.valorUnitario || '')}" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label>Situação</label>
+            <select class="select" data-res-divisao-field="situacao">
+              <option value="">-- selecione --</option>
+              <option value="ACEITO" ${divisao.situacao === 'ACEITO' ? 'selected' : ''}>ACEITO</option>
+              <option value="DESERTO" ${divisao.situacao === 'DESERTO' ? 'selected' : ''}>DESERTO</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>CNPJ do Fornecedor</label>
+            <input class="input res-divisao-cnpj" data-res-divisao-field="cnpj" value="${escHtml(divisao.cnpj || '')}" placeholder="00.000.000/0000-00">
+          </div>
+          <div class="field" style="grid-column:1/-1">
+            <label>Fornecedor</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <div class="muted" style="flex:1;min-width:220px">
+                ${escHtml(divisao.razaoSocial || divisao.nomeFantasia || 'Fornecedor não informado')} | Total: R$ <span data-res-divisao-total="${divisaoIndex}">${escHtml(formatBRLDisplay(divisao.valorTotal || 0) || '0,00')}</span>
+              </div>
+              <button type="button" class="btn" data-res-divisao-fornecedor="${index}:${divisaoIndex}">Dados do fornecedor</button>
+              <button type="button" class="btn danger" data-res-divisao-remove="${index}:${divisaoIndex}">Excluir divisão</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+      <button type="button" class="btn" data-res-divisao-add="${index}">+ Adicionar outra empresa</button>
+    </div>
+  `;
+}
+
 function renderResultadoItens() {
   if (!resultadoItensContainer) return;
   resultadoItensContainer.innerHTML = resultadoItens.length
@@ -6688,7 +6809,7 @@ function renderResultadoItens() {
           </div>
           <div class="field">
             <label>Situação</label>
-            <select class="select" data-res-field="situacao">
+            <select class="select" data-res-field="situacao" ${item.divisoesResultado?.length ? 'disabled' : ''}>
               <option value="">-- selecione --</option>
               <option value="ACEITO" ${item.situacao === 'ACEITO' ? 'selected' : ''}>ACEITO</option>
               <option value="DESERTO" ${item.situacao === 'DESERTO' ? 'selected' : ''}>DESERTO</option>
@@ -6696,11 +6817,11 @@ function renderResultadoItens() {
           </div>
           <div class="field">
             <label>Valor unitário do resultado</label>
-            <input class="input res-valor-unitario" data-res-field="valorUnitario" value="${escHtml(item.valorUnitario || '')}" placeholder="0,00">
+            <input class="input res-valor-unitario" data-res-field="valorUnitario" value="${escHtml(item.valorUnitario || '')}" placeholder="0,00" ${item.divisoesResultado?.length ? 'readonly' : ''}>
           </div>
           <div class="field">
             <label>CNPJ do Fornecedor</label>
-            <input class="input res-cnpj" data-res-field="cnpj" value="${escHtml(item.cnpj || '')}" placeholder="00.000.000/0000-00">
+            <input class="input res-cnpj" data-res-field="cnpj" value="${escHtml(item.cnpj || '')}" placeholder="00.000.000/0000-00" ${item.divisoesResultado?.length ? 'readonly' : ''}>
           </div>
           <div class="field" style="grid-column:1/-1">
             <label>Fornecedor</label>
@@ -6708,10 +6829,12 @@ function renderResultadoItens() {
               <div class="muted" style="flex:1;min-width:220px">
                 ${escHtml(item.razaoSocial || item.nomeFantasia || 'Fornecedor não informado')}
               </div>
-              <button type="button" class="btn" data-res-fornecedor="${index}">Dados do fornecedor</button>
+              <button type="button" class="btn" data-res-fornecedor="${index}" ${item.divisoesResultado?.length ? 'disabled' : ''}>Dados do fornecedor</button>
+              ${item.divisoesResultado?.length ? '' : `<button type="button" class="btn" data-res-dividir="${index}">Dividir resultado</button>`}
             </div>
           </div>
         </div>
+        ${renderDivisoesResultado(item, index)}
       </div>
     `).join('')
     : '<div class="muted" style="font-size:12px">Nenhum item recebido. Clique em "Receber itens cadastrados" para usar os itens do processo.</div>';
@@ -6744,6 +6867,83 @@ function renderResultadoItens() {
   resultadoItensContainer.querySelectorAll('[data-res-fornecedor]').forEach(btn => {
     btn.addEventListener('click', () => abrirModalFornecedorResultado(Number(btn.dataset.resFornecedor)));
   });
+  resultadoItensContainer.querySelectorAll('[data-res-dividir]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const index = Number(btn.dataset.resDividir);
+      const item = resultadoItens[index];
+      if (!item) return;
+      if (!Array.isArray(item.divisoesResultado)) item.divisoesResultado = [];
+      item.divisoesResultado.push(novoResultadoDivisao({
+        quantidade: item.divisoesResultado.length ? "" : item.quantidade,
+        valorUnitario: item.divisoesResultado.length ? "" : item.valorUnitario,
+        fornecedorId: item.divisoesResultado.length ? "" : item.fornecedorId,
+        cnpj: item.divisoesResultado.length ? "" : item.cnpj,
+        razaoSocial: item.divisoesResultado.length ? "" : item.razaoSocial,
+        nomeFantasia: item.divisoesResultado.length ? "" : item.nomeFantasia,
+        pessoaVinculadaId: item.divisoesResultado.length ? "" : item.pessoaVinculadaId,
+        pessoaVinculadaNome: item.divisoesResultado.length ? "" : item.pessoaVinculadaNome,
+        pessoaVinculadaTipo: item.divisoesResultado.length ? "" : item.pessoaVinculadaTipo,
+        situacao: item.divisoesResultado.length ? "" : item.situacao
+      }));
+      renderResultadoItens();
+    });
+  });
+  resultadoItensContainer.querySelectorAll('[data-res-divisao-add]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = resultadoItens[Number(btn.dataset.resDivisaoAdd)];
+      if (!item) return;
+      if (!Array.isArray(item.divisoesResultado)) item.divisoesResultado = [];
+      item.divisoesResultado.push(novoResultadoDivisao());
+      renderResultadoItens();
+    });
+  });
+  resultadoItensContainer.querySelectorAll('[data-res-divisao-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [index, divisaoIndex] = btn.dataset.resDivisaoRemove.split(':').map(Number);
+      const item = resultadoItens[index];
+      if (!item?.divisoesResultado) return;
+      item.divisoesResultado.splice(divisaoIndex, 1);
+      renderResultadoItens();
+    });
+  });
+  resultadoItensContainer.querySelectorAll('[data-res-divisao-fornecedor]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [index, divisaoIndex] = btn.dataset.resDivisaoFornecedor.split(':').map(Number);
+      abrirModalFornecedorResultado(index, divisaoIndex);
+    });
+  });
+  resultadoItensContainer.querySelectorAll('[data-res-divisao-field]').forEach(input => {
+    const atualizarDivisao = () => {
+      const card = input.closest('[data-res-item]');
+      const row = input.closest('[data-res-divisao]');
+      const index = Number(card?.dataset.resItem);
+      const divisaoIndex = Number(row?.dataset.resDivisao);
+      const divisao = resultadoItens[index]?.divisoesResultado?.[divisaoIndex];
+      if (!divisao) return;
+      if (input.classList.contains('res-divisao-cnpj')) input.value = formatCnpj(input.value);
+      if (input.classList.contains('res-divisao-valor')) {
+        let value = input.value.replace(/\D/g, '');
+        input.value = value ? (parseFloat(value) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+      }
+      divisao[input.dataset.resDivisaoField] = input.value;
+      calcularResultadoItens();
+      atualizarEtapasConcluidas();
+    };
+    input.addEventListener('input', atualizarDivisao);
+    input.addEventListener('change', atualizarDivisao);
+    input.addEventListener('change', () => {
+      if (!input.classList.contains('res-divisao-cnpj')) return;
+      const card = input.closest('[data-res-item]');
+      const row = input.closest('[data-res-divisao]');
+      preencherFornecedorResultadoPorCnpj(Number(card?.dataset.resItem), Number(row?.dataset.resDivisao));
+    });
+    input.addEventListener('blur', () => {
+      if (!input.classList.contains('res-divisao-cnpj')) return;
+      const card = input.closest('[data-res-item]');
+      const row = input.closest('[data-res-divisao]');
+      preencherFornecedorResultadoPorCnpj(Number(card?.dataset.resItem), Number(row?.dataset.resDivisao));
+    });
+  });
   calcularResultadoItens();
 }
 
@@ -6763,7 +6963,23 @@ function coletarResultadoItens() {
     pessoaVinculadaTipo: item.pessoaVinculadaTipo || "",
     situacao: item.situacao || "",
     valorUnitario: item.valorUnitario || "",
-    valorTotal: item.valorTotal || 0
+    valorTotal: item.valorTotal || 0,
+    divisoesResultado: Array.isArray(item.divisoesResultado)
+      ? item.divisoesResultado.map(divisao => ({
+          id: divisao.id || genId(),
+          quantidade: divisao.quantidade || "",
+          valorUnitario: divisao.valorUnitario || "",
+          valorTotal: divisao.valorTotal || 0,
+          fornecedorId: divisao.fornecedorId || "",
+          cnpj: divisao.cnpj || "",
+          razaoSocial: divisao.razaoSocial || "",
+          nomeFantasia: divisao.nomeFantasia || "",
+          pessoaVinculadaId: divisao.pessoaVinculadaId || "",
+          pessoaVinculadaNome: divisao.pessoaVinculadaNome || "",
+          pessoaVinculadaTipo: divisao.pessoaVinculadaTipo || "",
+          situacao: divisao.situacao || ""
+        })).filter(divisao => divisao.quantidade || divisao.valorUnitario || divisao.cnpj || divisao.razaoSocial || divisao.situacao)
+      : []
   })).filter(item => item.descricao || item.quantidade || item.unidade || item.cnpj || item.razaoSocial || item.situacao || item.valorUnitario);
 }
 
@@ -7754,23 +7970,21 @@ ${Array.isArray(item.etapasProcesso) && item.etapasProcesso.length ? `<b>Etapa:<
         `).join('')
         : pesquisas;
       const resultadoItensHtml = Array.isArray(item.resultadoItens) && item.resultadoItens.length
-        ? item.resultadoItens.map((res, idx) => `
+        ? linhasResultadoProcesso(item).map((res) => `
           <div style="margin:8px 0;padding:8px;border:1px solid #dbe3ef;border-radius:8px">
-            <strong>${idx + 1}. ${safe(res.descricao || 'Item sem descrição')}</strong><br>
+            <strong>${safe(res.itemNumero || '')}. ${safe(res.descricao || 'Item sem descrição')}</strong><br>
             <span class="muted">Qtd: ${safe(res.quantidade || '')} ${safe(res.unidade || '')} | Situação: ${safe(res.situacao || 'Não informada')} | Unitário: R$ ${safe(formatBRLDisplay(parseBRLToNumber(res.valorUnitario) || 0) || '0,00')} | Total: R$ ${safe(formatBRLDisplay(res.valorTotal || 0) || '0,00')}</span><br>
             <span class="muted">Fornecedor: ${safe(res.razaoSocial || res.nomeFantasia || 'Não informado')} ${res.cnpj ? `- ${safe(res.cnpj)}` : ''}</span>
           </div>
         `).join('')
         : '<span class="muted">Nenhum item informado</span>';
-      const homologacaoItensAceitos = Array.isArray(item.resultadoItens)
-        ? item.resultadoItens.map((res, idx) => ({ res, idx })).filter(({ res }) => normalizarCadastro(res.situacao) === 'ACEITO')
-        : [];
+      const homologacaoItensAceitos = linhasResultadoProcesso(item)
+        .filter(res => normalizarCadastro(res.situacao) === 'ACEITO');
       const homologacaoItensViewHtml = homologacaoItensAceitos.length
-        ? `<div class="process-table-wrap"><table class="homologacao-table"><thead><tr><th>Item</th><th>Descrição do Produto/Serviço</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th><th>Situação</th><th>Proponente/Fornecedor</th></tr></thead><tbody>${homologacaoItensAceitos.map(({ res, idx }) => `<tr><td>${idx + 1}</td><td>${safe(res.descricao || '')}</td><td>${safe(res.unidade || '')}</td><td>${safe(res.quantidade || '')}</td><td>${safe(formatBRLDisplay(parseBRLToNumber(res.valorUnitario) || 0) || '0,00')}</td><td>${safe(formatBRLDisplay(res.valorTotal || 0) || '0,00')}</td><td>${safe(res.situacao || '')}</td><td>${safe(res.razaoSocial || res.nomeFantasia || '')}${res.cnpj ? ` ${safe(res.cnpj)}` : ''}</td></tr>`).join('')}</tbody></table></div>`
+        ? `<div class="process-table-wrap"><table class="homologacao-table"><thead><tr><th>Item</th><th>Descrição do Produto/Serviço</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th><th>Situação</th><th>Proponente/Fornecedor</th></tr></thead><tbody>${homologacaoItensAceitos.map(res => `<tr><td>${safe(res.itemNumero || '')}</td><td>${safe(res.descricao || '')}</td><td>${safe(res.unidade || '')}</td><td>${safe(res.quantidade || '')}</td><td>${safe(formatBRLDisplay(parseBRLToNumber(res.valorUnitario) || 0) || '0,00')}</td><td>${safe(formatBRLDisplay(res.valorTotal || 0) || '0,00')}</td><td>${safe(res.situacao || '')}</td><td>${safe(res.razaoSocial || res.nomeFantasia || '')}${res.cnpj ? ` ${safe(res.cnpj)}` : ''}</td></tr>`).join('')}</tbody></table></div>`
         : '<div class="empty">Nenhum item aceito para homologação.</div>';
-      const valorHomologadoCalculado = Array.isArray(item.resultadoItens)
-        ? item.resultadoItens.reduce((soma, res) => normalizarCadastro(res.situacao) === 'DESERTO' ? soma : soma + (Number(res.valorTotal) || 0), 0)
-        : 0;
+      const valorHomologadoCalculado = linhasResultadoProcesso(item)
+        .reduce((soma, res) => normalizarCadastro(res.situacao) === 'DESERTO' ? soma : soma + (Number(res.valorTotal) || 0), 0);
       const valorHomologado = valorHomologadoCalculado ? formatBRLDisplay(valorHomologadoCalculado) : (item.resultadoValorHomologado || '');
       const registroPrecoTexto = item.registroPrecos === 'sim' || item.tipoRegistroPreco ? 'SIM' : item.registroPrecos === 'nao' ? 'NÃO' : '';
       const tipoRegistroPrecoTexto = item.tipoRegistroPreco === 'gerador'
@@ -7779,7 +7993,7 @@ ${Array.isArray(item.etapasProcesso) && item.etapasProcesso.length ? `<b>Etapa:<
           ? 'ADESÃO'
           : item.tipoRegistroPreco || '';
       const fornecedoresResumoMap = new Map();
-      (Array.isArray(item.resultadoItens) ? item.resultadoItens : []).forEach(res => {
+      linhasResultadoProcesso(item).forEach(res => {
         const chave = onlyDigits(res.cnpj) || normalizarCadastro(res.razaoSocial || res.nomeFantasia || '');
         if (!chave) return;
         if (!fornecedoresResumoMap.has(chave)) {
@@ -8720,9 +8934,8 @@ atualizarEtapasConcluidas();
     }
 
     function valorHomologadoProcesso(processo) {
-      const valorCalculado = Array.isArray(processo.resultadoItens)
-        ? processo.resultadoItens.reduce((soma, item) => normalizarCadastro(item.situacao) === "DESERTO" ? soma : soma + (Number(item.valorTotal) || 0), 0)
-        : 0;
+      const valorCalculado = linhasResultadoProcesso(processo)
+        .reduce((soma, item) => normalizarCadastro(item.situacao) === "DESERTO" ? soma : soma + (Number(item.valorTotal) || 0), 0);
       return valorCalculado ? formatBRLDisplay(valorCalculado) : valorProcesso(processo, "resultadoValorHomologado");
     }
 
@@ -9071,7 +9284,7 @@ atualizarEtapasConcluidas();
         p.fornecedorId === fornecedor.id ||
         onlyDigits(p.cnpj) === cnpjDigits ||
         onlyDigits(p.credCnpj) === cnpjDigits ||
-        (Array.isArray(p.resultadoItens) && p.resultadoItens.some(item => item.fornecedorId === fornecedor.id || onlyDigits(item.cnpj) === cnpjDigits))
+        linhasResultadoProcesso(p).some(item => item.fornecedorId === fornecedor.id || onlyDigits(item.cnpj) === cnpjDigits)
       );
     }
 
@@ -9082,15 +9295,14 @@ atualizarEtapasConcluidas();
         p.fornecedorId === fornecedor.id ||
         onlyDigits(p.cnpj) === cnpjDigits ||
         onlyDigits(p.credCnpj) === cnpjDigits ||
-        (Array.isArray(p.resultadoItens) && p.resultadoItens.some(item => item.fornecedorId === fornecedor.id || onlyDigits(item.cnpj) === cnpjDigits))
+        linhasResultadoProcesso(p).some(item => item.fornecedorId === fornecedor.id || onlyDigits(item.cnpj) === cnpjDigits)
       );
     }
 
     function dadosVinculoFornecedorNoProcesso(processo, fornecedor) {
       const cnpjDigits = onlyDigits(fornecedor?.cnpj);
-      const itemResultado = Array.isArray(processo?.resultadoItens)
-        ? processo.resultadoItens.find(item => (item.fornecedorId === fornecedor?.id || onlyDigits(item.cnpj) === cnpjDigits) && (item.pessoaVinculadaNome || item.pessoaVinculadaTipo))
-        : null;
+      const itemResultado = linhasResultadoProcesso(processo)
+        .find(item => (item.fornecedorId === fornecedor?.id || onlyDigits(item.cnpj) === cnpjDigits) && (item.pessoaVinculadaNome || item.pessoaVinculadaTipo));
       return {
         pessoa: itemResultado?.pessoaVinculadaNome || processo?.pessoaVinculadaNome || "",
         tipo: itemResultado?.pessoaVinculadaTipo || processo?.pessoaVinculadaTipo || ""
@@ -9260,7 +9472,7 @@ atualizarEtapasConcluidas();
             f.nomeFantasia,
             processosVinculadosFornecedor(f).map(p => {
               const vinculo = dadosVinculoFornecedorNoProcesso(p, f);
-              const resultado = Array.isArray(p.resultadoItens) ? p.resultadoItens.map(item => `${item.cnpj || ""} ${item.razaoSocial || ""} ${item.nomeFantasia || ""} ${item.pessoaVinculadaNome || ""} ${item.pessoaVinculadaTipo || ""}`).join(" ") : "";
+              const resultado = linhasResultadoProcesso(p).map(item => `${item.cnpj || ""} ${item.razaoSocial || ""} ${item.nomeFantasia || ""} ${item.pessoaVinculadaNome || ""} ${item.pessoaVinculadaTipo || ""}`).join(" ");
               return `${p.numero} ${p.objeto} ${vinculo.pessoa} ${vinculo.tipo} ${resultado}`;
             }).join(" "),
             normalizarPessoasFornecedor(f.pessoas).map(p => `${p.nome} ${p.cpf} ${p.tipoVinculo}`).join(" ")

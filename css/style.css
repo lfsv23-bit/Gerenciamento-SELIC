@@ -832,6 +832,9 @@ dialog {
   .process-etapas-box{
     grid-template-columns:1fr;
   }
+  .resultado-divisao-row{
+    grid-template-columns:1fr;
+  }
   .ata-process-head,
   .ata-view-head {
     flex-direction: column;
@@ -1028,6 +1031,25 @@ color:#0f172a;
 width:15px;
 height:15px;
 flex:0 0 auto;
+}
+
+.resultado-divisoes{
+margin-top:12px;
+padding:12px;
+border:1px solid #bfdbfe;
+border-radius:8px;
+background:#f8fbff;
+}
+
+.resultado-divisao-row{
+display:grid;
+grid-template-columns:repeat(4,minmax(0,1fr));
+gap:10px;
+padding:10px;
+margin-bottom:10px;
+border:1px solid #dbe3ef;
+border-radius:8px;
+background:#fff;
 }
 
 .fases-config-card{
