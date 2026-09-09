@@ -10079,9 +10079,17 @@ atualizarEtapasConcluidas();
       ];
     }
 
-    async function importarItensHomologadosParaIrp() {
+    async function importarItensHomologadosParaIrp(botao = null) {
+      console.log('[IRP] Clique no botão de importar homologados recebido.');
       const processoId = campos.processoGerador.value;
       if (!processoId) return alert('Selecione o processo gerador antes de importar os itens homologados.');
+
+      const textoOriginal = botao?.textContent || '';
+      if (botao) {
+        botao.disabled = true;
+        botao.textContent = 'Buscando itens homologados...';
+      }
+      showToast('Buscando itens homologados do processo gerador...');
 
       try {
         processosCategoriaCache = await carregarProcessosLicitatoriosFonte({ silencioso: true });
@@ -10112,6 +10120,10 @@ atualizarEtapasConcluidas();
       itensDraft = itensHomologados;
       renderItensDraft();
       showToast(`${contarItensTabela(itensDraft)} item(s) homologado(s) importado(s) para a IRP.`);
+      if (botao) {
+        botao.disabled = false;
+        botao.textContent = textoOriginal;
+      }
     }
 
     function carregarProcessosGeradoresIrp(selecionado = '') {
@@ -10338,7 +10350,15 @@ atualizarEtapasConcluidas();
     aplicarMascaraDataLocal(campos.publicacaoData);
 
     container.querySelector('#irp_import_itens').onclick = () => container.querySelector('#irp_itens_file').click();
-    container.querySelector('#irp_import_homologados').onclick = importarItensHomologadosParaIrp;
+    container.addEventListener('click', (event) => {
+      const botao = event.target.closest('#irp_import_homologados');
+      if (!botao || !container.contains(botao)) return;
+      event.preventDefault();
+      importarItensHomologadosParaIrp(botao).finally(() => {
+        botao.disabled = false;
+        botao.textContent = 'Importar homologados do processo gerador';
+      });
+    });
     container.querySelector('#irp_itens_file').addEventListener('change', async () => {
       const file = container.querySelector('#irp_itens_file').files[0];
       if (!file) return;
