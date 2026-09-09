@@ -9976,6 +9976,7 @@ atualizarEtapasConcluidas();
               <label>Itens</label>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
                 <button id="irp_import_itens" class="btn" type="button">Importar TXT de Itens</button>
+                <button id="irp_import_homologados" class="btn" type="button">Importar homologados do processo gerador</button>
                 <button id="irp_limpar_itens" class="btn" type="button">Limpar Itens</button>
                 <input id="irp_itens_file" type="file" accept=".txt,text/plain" style="display:none">
               </div>
@@ -10033,6 +10034,44 @@ atualizarEtapasConcluidas();
       if (!id) return '';
       const processo = processosGeradoresRegistroPreco().find(p => p.id === id);
       return processo ? `${processo.numero || 'SEM NÚMERO'} - ${processo.objeto || ''}` : 'Processo vinculado não encontrado';
+    }
+
+    function itensHomologadosProcessoParaIrp(processo) {
+      const linhas = linhasResultadoProcesso(processo)
+        .filter(item => normalizarCadastro(item.situacao) === 'ACEITO');
+      if (!linhas.length) return [];
+      return [
+        ['Item', 'Descrição', 'Unidade', 'Quantidade', 'Valor Unitário', 'Valor Total', 'CNPJ do Fornecedor', 'Fornecedor'],
+        ...linhas.map(item => [
+          item.itemNumero || '',
+          item.descricao || '',
+          item.unidade || '',
+          item.quantidade || '',
+          formatBRLDisplay(parseBRLToNumber(item.valorUnitario) || 0) || '',
+          formatBRLDisplay(item.valorTotal || 0) || '',
+          item.cnpj || '',
+          item.razaoSocial || item.nomeFantasia || ''
+        ])
+      ];
+    }
+
+    function importarItensHomologadosParaIrp() {
+      const processoId = campos.processoGerador.value;
+      if (!processoId) return alert('Selecione o processo gerador antes de importar os itens homologados.');
+
+      const processo = processosGeradoresRegistroPreco().find(p => p.id === processoId);
+      if (!processo) return alert('Processo gerador não encontrado.');
+
+      const itensHomologados = itensHomologadosProcessoParaIrp(processo);
+      if (!itensHomologados.length) {
+        return alert('O processo gerador selecionado ainda não possui itens aceitos/homologados no bloco Resultado.');
+      }
+
+      if (itensDraft.length && !confirm('Substituir os itens atuais da IRP pelos itens homologados do processo gerador?')) return;
+
+      itensDraft = itensHomologados;
+      renderItensDraft();
+      showToast(`${contarItensTabela(itensDraft)} item(s) homologado(s) importado(s) para a IRP.`);
     }
 
     function carregarProcessosGeradoresIrp(selecionado = '') {
@@ -10259,6 +10298,7 @@ atualizarEtapasConcluidas();
     aplicarMascaraDataLocal(campos.publicacaoData);
 
     container.querySelector('#irp_import_itens').onclick = () => container.querySelector('#irp_itens_file').click();
+    container.querySelector('#irp_import_homologados').onclick = importarItensHomologadosParaIrp;
     container.querySelector('#irp_itens_file').addEventListener('change', async () => {
       const file = container.querySelector('#irp_itens_file').files[0];
       if (!file) return;
