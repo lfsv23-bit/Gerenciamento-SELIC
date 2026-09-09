@@ -10027,18 +10027,42 @@ atualizarEtapasConcluidas();
     };
 
     function processosGeradoresRegistroPreco() {
-      return processosCategoriaCache.filter(p => p.tipoRegistroPreco === "gerador");
+      return processosCategoriaCache.filter(p => {
+        const tipoRegistro = normalizarCadastro(p.tipoRegistroPreco || '');
+        return tipoRegistro === 'GERADOR';
+      });
+    }
+
+    function buscarProcessoGeradorIrp(id) {
+      if (!id) return null;
+      const alvo = String(id);
+      return processosGeradoresRegistroPreco().find(p =>
+        String(p.id || '') === alvo ||
+        String(p.supabaseId || '') === alvo ||
+        String(p.local_id || '') === alvo
+      ) || null;
     }
 
     function rotuloProcessoGerador(id) {
       if (!id) return '';
-      const processo = processosGeradoresRegistroPreco().find(p => p.id === id);
+      const processo = buscarProcessoGeradorIrp(id);
       return processo ? `${processo.numero || 'SEM NÚMERO'} - ${processo.objeto || ''}` : 'Processo vinculado não encontrado';
     }
 
-    function itensHomologadosProcessoParaIrp(processo) {
-      const linhas = linhasResultadoProcesso(processo)
-        .filter(item => normalizarCadastro(item.situacao) === 'ACEITO');
+    function linhasResultadoHomologadasIrp(processo) {
+      const linhas = linhasResultadoProcesso(processo);
+      const aceitos = linhas.filter(item => normalizarCadastro(item.situacao) === 'ACEITO');
+      if (aceitos.length) return { linhas: aceitos, fallback: false };
+
+      const preenchidos = linhas.filter(item => {
+        const situacao = normalizarCadastro(item.situacao);
+        const temResultado = item.valorUnitario || item.valorTotal || item.cnpj || item.razaoSocial || item.nomeFantasia;
+        return situacao !== 'DESERTO' && temResultado;
+      });
+      return { linhas: preenchidos, fallback: preenchidos.length > 0 };
+    }
+
+    function montarTabelaIrpPorLinhasResultado(linhas) {
       if (!linhas.length) return [];
       return [
         ['Item', 'Descrição', 'Unidade', 'Quantidade', 'Valor Unitário', 'Valor Total', 'CNPJ do Fornecedor', 'Fornecedor'],
@@ -10055,18 +10079,34 @@ atualizarEtapasConcluidas();
       ];
     }
 
-    function importarItensHomologadosParaIrp() {
+    async function importarItensHomologadosParaIrp() {
       const processoId = campos.processoGerador.value;
       if (!processoId) return alert('Selecione o processo gerador antes de importar os itens homologados.');
 
-      const processo = processosGeradoresRegistroPreco().find(p => p.id === processoId);
-      if (!processo) return alert('Processo gerador não encontrado.');
-
-      const itensHomologados = itensHomologadosProcessoParaIrp(processo);
-      if (!itensHomologados.length) {
-        return alert('O processo gerador selecionado ainda não possui itens aceitos/homologados no bloco Resultado.');
+      try {
+        processosCategoriaCache = await carregarProcessosLicitatoriosFonte({ silencioso: true });
+        carregarProcessosGeradoresIrp(processoId);
+        campos.processoGerador.value = processoId;
+      } catch (error) {
+        console.error('[IRP] Não foi possível atualizar os processos antes da importação.', error);
       }
 
+      const processo = buscarProcessoGeradorIrp(processoId);
+      console.log('[IRP] Importar homologados do processo gerador', {
+        processoId,
+        processo,
+        resultadoItens: processo?.resultadoItens
+      });
+      if (!processo) return alert('Processo gerador não encontrado. Atualize a página e tente novamente.');
+
+      const { linhas, fallback } = linhasResultadoHomologadasIrp(processo);
+      if (!linhas.length) {
+        return alert('O processo gerador selecionado ainda não possui itens com resultado preenchido para importar.');
+      }
+
+      if (fallback && !confirm('Não encontrei itens marcados como ACEITO no Resultado. Deseja importar os itens preenchidos que não estão como DESERTO?')) return;
+
+      const itensHomologados = montarTabelaIrpPorLinhasResultado(linhas);
       if (itensDraft.length && !confirm('Substituir os itens atuais da IRP pelos itens homologados do processo gerador?')) return;
 
       itensDraft = itensHomologados;
