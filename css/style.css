@@ -402,6 +402,115 @@ dialog {
   grid-column: span 4;
 }
 
+/* Modal de ata dentro do cadastro do processo */
+.ata-inline-modal {
+  position: fixed;
+  top: 4vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(980px, 94vw);
+  max-height: 91vh;
+  overflow: hidden;
+  z-index: 10050;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #dbe3ef;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, .28);
+}
+
+.ata-inline-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid #dbe3ef;
+  background: #f8fafc;
+}
+
+.ata-inline-head strong {
+  display: block;
+  margin-top: 3px;
+  color: #0f172a;
+  font-size: 17px;
+}
+
+.ata-inline-eyebrow {
+  display: block;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ata-inline-body {
+  max-height: calc(91vh - 144px);
+  overflow: auto;
+  padding: 18px 22px 28px;
+  background: #fff;
+}
+
+.ata-inline-modal .modal-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid #dbe3ef;
+  background: #fff;
+}
+
+.ata-form-section {
+  padding: 14px;
+  margin-bottom: 14px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.ata-form-section-title {
+  margin: -14px -14px 14px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #dbe3ef;
+  border-radius: 12px 12px 0 0;
+  background: #eef6ff;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ata-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.ata-form-grid textarea.input {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.ata-form-grid input[type="file"].input {
+  padding: 7px 10px;
+  background: #fff;
+}
+
+.ata-col-span {
+  grid-column: 1 / -1;
+}
+
+.ata-file-status {
+  margin-top: 5px;
+  font-size: 12px;
+}
+
 .ata-process-card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -811,6 +920,23 @@ dialog {
     display: none;
   }
   .grid {
+    grid-template-columns: 1fr;
+  }
+  .ata-inline-modal {
+    width: 98vw;
+    max-height: 96vh;
+    top: 2vh;
+  }
+  .ata-inline-head,
+  .ata-inline-modal .modal-actions {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .ata-inline-body {
+    max-height: calc(96vh - 140px);
+    padding: 14px;
+  }
+  .ata-form-grid {
     grid-template-columns: 1fr;
   }
   .ata-editor-grid {

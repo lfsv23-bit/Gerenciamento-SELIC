@@ -9,6 +9,27 @@
   const ASSUNTOS_PROTOCOLO_KEY = 'assuntosProtocoloCadastro';
   const IRP_STORAGE_KEY = 'irpsRegistroPreco';
 
+  function linhasResultadoItem(item, index = 0) {
+    if (Array.isArray(item?.divisoesResultado) && item.divisoesResultado.length) {
+      return item.divisoesResultado.map((divisao, divisaoIndex) => ({
+        ...item,
+        ...divisao,
+        descricao: item.descricao,
+        unidade: item.unidade,
+        itemIndex: index,
+        divisaoIndex,
+        itemNumero: `${index + 1}.${divisaoIndex + 1}`
+      }));
+    }
+    return [{ ...item, itemIndex: index, divisaoIndex: null, itemNumero: String(index + 1) }];
+  }
+
+  function linhasResultadoProcesso(processo) {
+    return Array.isArray(processo?.resultadoItens)
+      ? processo.resultadoItens.flatMap((item, index) => linhasResultadoItem(item, index))
+      : [];
+  }
+
   const TIPOS_PROTOCOLO_PADRAO = [
     "PROCESSO LICITATÓRIO",
     "SOLICITAÇÃO",
@@ -1766,29 +1787,49 @@ ${loadTiposProtocolo().filter(t => t.ativo !== false).map(t => `<option value="$
 </div>
 <div id="lic_atas_status" class="muted" style="font-size:12px;margin-top:6px">Nenhuma ata cadastrada.</div>
 <div id="lic_atas_preview" style="margin-top:8px;display:none;overflow:auto;max-height:220px"></div>
-<div id="lic_ata_inline_panel" class="card" style="display:none;position:fixed;top:4vh;left:50%;transform:translateX(-50%);width:min(920px,94vw);max-height:90vh;overflow:auto;z-index:10050;background:#fff;padding:16px;border:1px solid var(--border,#dbe3ef);box-shadow:0 24px 80px rgba(15,23,42,.28);margin:0">
-<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+<div id="lic_ata_inline_panel" class="ata-inline-modal" style="display:none">
+<div class="ata-inline-head">
+<div>
+<span class="ata-inline-eyebrow">Registro de Preço</span>
 <strong id="lic_ata_inline_titulo">Nova Ata de Registro de Preço</strong>
-<button type="button" id="lic_ata_inline_close" class="btn">Fechar</button>
+</div>
+<button type="button" id="lic_ata_inline_close" class="btn ghost">Fechar</button>
 </div>
 <input type="hidden" id="lic_ata_inline_idx">
-<div class="grid">
+<div class="ata-inline-body">
+<section class="ata-form-section">
+<div class="ata-form-section-title">Identificação da Ata</div>
+<div class="ata-form-grid">
 <div class="field"><label>N°</label><input id="lic_ata_inline_numero" class="input"></div>
 <div class="field"><label>ANO</label><input id="lic_ata_inline_ano" class="input" inputmode="numeric" maxlength="4"></div>
-<div class="field" style="grid-column:1/-1"><label>UNIDADE ORÇAMENTÁRIA</label><input id="lic_ata_inline_unidade" class="input"></div>
-<div class="field" style="grid-column:1/-1"><label>OBJETO</label><textarea id="lic_ata_inline_objeto" class="input" rows="3"></textarea></div>
-<div class="field" style="grid-column:1/-1"><label>OBJETO RESUMIDO</label><input id="lic_ata_inline_objeto_resumido" class="input"></div>
+<div class="field ata-col-span"><label>UNIDADE ORÇAMENTÁRIA</label><input id="lic_ata_inline_unidade" class="input"></div>
+<div class="field ata-col-span"><label>OBJETO</label><textarea id="lic_ata_inline_objeto" class="input" rows="3"></textarea></div>
+<div class="field ata-col-span"><label>OBJETO RESUMIDO</label><input id="lic_ata_inline_objeto_resumido" class="input"></div>
 <div class="field"><label>MODALIDADE</label><input id="lic_ata_inline_modalidade" class="input"></div>
 <div class="field"><label>DATA DE ASSINATURA</label><input id="lic_ata_inline_assinatura" class="input" placeholder="DD/MM/AAAA" maxlength="10"></div>
+</div>
+</section>
+<section class="ata-form-section">
+<div class="ata-form-section-title">Vigência e PNCP</div>
+<div class="ata-form-grid">
 <div class="field"><label>INÍCIO DA VIGÊNCIA</label><input id="lic_ata_inline_vig_inicio" class="input" placeholder="DD/MM/AAAA" maxlength="10"></div>
 <div class="field"><label>TÉRMINO DA VIGÊNCIA</label><input id="lic_ata_inline_vig_fim" class="input" placeholder="DD/MM/AAAA" maxlength="10"></div>
-<div class="field" style="grid-column:1/-1"><label>LINK PNCP</label><input id="lic_ata_inline_pncp" class="input" type="url" placeholder="https://..."></div>
+<div class="field ata-col-span"><label>LINK PNCP</label><input id="lic_ata_inline_pncp" class="input" type="url" placeholder="https://..."></div>
+</div>
+</section>
+<section class="ata-form-section">
+<div class="ata-form-section-title">Fornecedor e PDFs principais</div>
+<div class="ata-form-grid">
 <div class="field"><label>CNPJ DO FORNECEDOR</label><input id="lic_ata_inline_cnpj" class="input" placeholder="00.000.000/0000-00"></div>
 <div class="field"><label>RAZÃO SOCIAL DO FORNECEDOR</label><input id="lic_ata_inline_fornecedor" class="input"></div>
-<div class="field" style="grid-column:1/-1"><label>NOME FANTASIA DO FORNECEDOR</label><input id="lic_ata_inline_fantasia" class="input"></div>
-<div class="field"><label>PDF DA ATA</label><input id="lic_ata_inline_pdf" class="input" type="file" accept="application/pdf,.pdf"><div id="lic_ata_inline_pdf_status" class="muted" style="font-size:12px;margin-top:4px"></div></div>
-<div class="field"><label>PDF DO EXTRATO NO DIÁRIO OFICIAL</label><input id="lic_ata_inline_pdf_extrato" class="input" type="file" accept="application/pdf,.pdf"><div id="lic_ata_inline_pdf_extrato_status" class="muted" style="font-size:12px;margin-top:4px"></div></div>
-<div class="field" style="grid-column:1/-1">
+<div class="field ata-col-span"><label>NOME FANTASIA DO FORNECEDOR</label><input id="lic_ata_inline_fantasia" class="input"></div>
+<div class="field"><label>PDF DA ATA</label><input id="lic_ata_inline_pdf" class="input" type="file" accept="application/pdf,.pdf"><div id="lic_ata_inline_pdf_status" class="muted ata-file-status"></div></div>
+<div class="field"><label>PDF DO EXTRATO NO DIÁRIO OFICIAL</label><input id="lic_ata_inline_pdf_extrato" class="input" type="file" accept="application/pdf,.pdf"><div id="lic_ata_inline_pdf_extrato_status" class="muted ata-file-status"></div></div>
+</div>
+</section>
+<section class="ata-form-section">
+<div class="ata-form-section-title">Itens da Ata</div>
+<div class="field ata-col-span">
 <label>Itens da Ata</label>
 <div style="display:flex;gap:8px;flex-wrap:wrap">
 <button type="button" id="lic_ata_inline_import_itens" class="btn">Importar TXT de Itens</button>
@@ -1811,6 +1852,7 @@ ${loadTiposProtocolo().filter(t => t.ativo !== false).map(t => `<option value="$
 </div>
 </div>
 </div>
+</section>
 </div>
 <div class="modal-actions">
 <button type="button" id="lic_ata_inline_cancel" class="btn">Cancelar</button>
