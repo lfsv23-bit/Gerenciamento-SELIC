@@ -10049,8 +10049,29 @@ atualizarEtapasConcluidas();
       return processo ? `${processo.numero || 'SEM NÚMERO'} - ${processo.objeto || ''}` : 'Processo vinculado não encontrado';
     }
 
+    function linhasResultadoItemIrp(item, index = 0) {
+      if (Array.isArray(item?.divisoesResultado) && item.divisoesResultado.length) {
+        return item.divisoesResultado.map((divisao, divisaoIndex) => ({
+          ...item,
+          ...divisao,
+          descricao: item.descricao,
+          unidade: item.unidade,
+          itemIndex: index,
+          divisaoIndex,
+          itemNumero: `${index + 1}.${divisaoIndex + 1}`
+        }));
+      }
+      return [{ ...item, itemIndex: index, divisaoIndex: null, itemNumero: String(index + 1) }];
+    }
+
+    function linhasResultadoProcessoIrp(processo) {
+      return Array.isArray(processo?.resultadoItens)
+        ? processo.resultadoItens.flatMap((item, index) => linhasResultadoItemIrp(item, index))
+        : [];
+    }
+
     function linhasResultadoHomologadasIrp(processo) {
-      const linhas = linhasResultadoProcesso(processo);
+      const linhas = linhasResultadoProcessoIrp(processo);
       const aceitos = linhas.filter(item => normalizarCadastro(item.situacao) === 'ACEITO');
       if (aceitos.length) return { linhas: aceitos, fallback: false };
 
