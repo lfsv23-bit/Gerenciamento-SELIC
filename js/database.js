@@ -1686,6 +1686,14 @@
     };
   }
 
+  async function salvarAnexosIrp(client, irp = {}) {
+    await salvarAnexoMeta(client, irp.pdfPublicacao, `irp_publicacao:${irp.numero || ""}/${irp.ano || ""}`);
+    await salvarAnexoMeta(client, irp.pdfCiAbertura, `irp_ci_abertura:${irp.numero || ""}/${irp.ano || ""}`);
+    for (const pub of Array.isArray(irp.publicacoes) ? irp.publicacoes : []) {
+      await salvarAnexoMeta(client, pub.pdf, `irp_publicacao_extra:${irp.numero || ""}/${irp.ano || ""}:${pub.tipo || ""}`);
+    }
+  }
+
   async function listarItensIrpPorIds(irpIds) {
     const ids = Array.from(new Set(irpIds || [])).filter(Boolean);
     if (!ids.length) return new Map();
@@ -1772,9 +1780,11 @@
 
   async function salvarIrpRegistroPreco(irp) {
     await requireAuthenticatedUser();
+    const client = requireClient();
+    await salvarAnexosIrp(client, irp);
     const payload = irpRegistroPrecoPayload(irp);
     console.log("[SUPABASE][irps_registro_preco][UPSERT][ANTES]", payload);
-    const result = await requireClient()
+    const result = await client
       .from("irps_registro_preco")
       .upsert(payload, { onConflict: "local_id" })
       .select("*")
@@ -1786,7 +1796,7 @@
     if (result.error) throw result.error;
     const itensConfirmados = await substituirItensIrp(result.data.id, irp.itens || []);
 
-    const check = await requireClient()
+    const check = await client
       .from("irps_registro_preco")
       .select("*")
       .eq("id", result.data.id)

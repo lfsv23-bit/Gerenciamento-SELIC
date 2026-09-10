@@ -9961,11 +9961,13 @@ atualizarEtapasConcluidas();
     let irps = loadIrpsRegistroPreco();
     let processosCategoriaCache = await carregarProcessosLicitatoriosFonte({ silencioso: true });
     let itensDraft = [];
+    let publicacoesIrpDraft = [];
     let editId = '';
+    let salvandoIrp = false;
 
     container.innerHTML = `
       <section class="wrap">
-        <header style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px">
+        <header class="irp-page-head">
           <div>
             <h2 style="margin:0 0 6px 0">IRP</h2>
             <div class="muted">Visualização dos processos relacionados a intenção de registro de preços.</div>
@@ -9973,16 +9975,34 @@ atualizarEtapasConcluidas();
           <button id="irp_add" class="btn primary" type="button">+ Nova IRP</button>
         </header>
 
+        <div class="irp-filter-card">
+          <div class="field">
+            <label>Buscar IRP</label>
+            <input id="irp_busca" class="input" placeholder="Buscar por número, objeto, situação, processo gerador...">
+          </div>
+          <div class="field">
+            <label>Ano</label>
+            <select id="irp_filtro_ano" class="input">
+              <option value="">Todos os anos</option>
+            </select>
+          </div>
+        </div>
+
         <div class="card" id="irp_lista"></div>
       </section>
 
-      <dialog id="irp_dlg" style="width:min(860px,96vw)">
-        <div class="modal-head">
-          <strong id="irp_dlg_titulo">Nova IRP</strong>
+      <dialog id="irp_dlg" class="irp-editor-dialog">
+        <div class="modal-head irp-editor-head">
+          <div>
+            <span class="irp-eyebrow">Intenção de Registro de Preço</span>
+            <strong id="irp_dlg_titulo">Nova IRP</strong>
+          </div>
           <button id="irp_close" class="btn ghost" type="button">Fechar</button>
         </div>
-        <div class="modal-body">
-          <div class="grid">
+        <div class="modal-body irp-editor-body">
+          <section class="irp-form-section">
+            <div class="irp-form-title">Identificação</div>
+            <div class="irp-form-grid">
             <div class="field">
               <label>N° da IRP</label>
               <input id="irp_numero" class="input" inputmode="numeric" maxlength="3" placeholder="001">
@@ -10003,28 +10023,23 @@ atualizarEtapasConcluidas();
               <label>Data da publicação</label>
               <input id="irp_publicacao_data" class="input" placeholder="DD/MM/AAAA" maxlength="10">
             </div>
-            <div class="field" style="grid-column:1/-1">
+            <div class="field irp-col-span">
               <label>Objeto</label>
               <textarea id="irp_objeto" class="input" rows="3"></textarea>
             </div>
-            <div class="field" style="grid-column:1/-1">
+            <div class="field irp-col-span">
               <label>Processo Gerador vinculado</label>
               <select id="irp_processo_gerador" class="input">
                 <option value="">-- nenhum processo vinculado --</option>
               </select>
               <div class="muted" style="font-size:12px;margin-top:6px">Selecione o processo gerador da ata relacionado a esta IRP.</div>
             </div>
-            <div class="field" style="grid-column:1/-1">
-              <label>Itens</label>
-              <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button id="irp_import_itens" class="btn" type="button">Importar TXT de Itens</button>
-                <button id="irp_import_homologados" class="btn" type="button">Importar homologados do processo gerador</button>
-                <button id="irp_limpar_itens" class="btn" type="button">Limpar Itens</button>
-                <input id="irp_itens_file" type="file" accept=".txt,text/plain" style="display:none">
-              </div>
-              <div id="irp_itens_status" class="muted" style="font-size:12px;margin-top:6px">Nenhum item importado.</div>
-              <div id="irp_itens_preview" style="margin-top:8px;display:none;overflow:auto;max-height:220px"></div>
             </div>
+          </section>
+
+          <section class="irp-form-section">
+            <div class="irp-form-title">Publicações e anexos</div>
+            <div class="irp-form-grid">
             <div class="field">
               <label>Publicação em PDF</label>
               <input id="irp_pdf_publicacao" class="input" type="file" accept="application/pdf,.pdf">
@@ -10035,7 +10050,30 @@ atualizarEtapasConcluidas();
               <input id="irp_pdf_ci" class="input" type="file" accept="application/pdf,.pdf">
               <div id="irp_pdf_ci_status" class="muted" style="font-size:12px;margin-top:4px"></div>
             </div>
-          </div>
+            <div class="field irp-col-span">
+              <div class="irp-section-row">
+                <label>Outras publicações</label>
+                <button id="irp_pub_add" class="btn" type="button">+ Incluir publicação</button>
+              </div>
+              <div id="irp_publicacoes_lista" class="irp-publicacoes-list"></div>
+            </div>
+            </div>
+          </section>
+
+          <section class="irp-form-section">
+            <div class="irp-form-title">Itens</div>
+            <div class="field irp-col-span">
+              <label>Itens</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button id="irp_import_itens" class="btn" type="button">Importar TXT de Itens</button>
+                <button id="irp_import_homologados" class="btn" type="button">Importar homologados do processo gerador</button>
+                <button id="irp_limpar_itens" class="btn" type="button">Limpar Itens</button>
+                <input id="irp_itens_file" type="file" accept=".txt,text/plain" style="display:none">
+              </div>
+              <div id="irp_itens_status" class="muted" style="font-size:12px;margin-top:6px">Nenhum item importado.</div>
+              <div id="irp_itens_preview" style="margin-top:8px;display:none;overflow:auto;max-height:220px"></div>
+            </div>
+          </section>
         </div>
         <div class="modal-foot">
           <button id="irp_delete" class="btn danger" type="button" style="display:none">Excluir</button>
@@ -10065,7 +10103,9 @@ atualizarEtapasConcluidas();
       objeto: container.querySelector('#irp_objeto'),
       processoGerador: container.querySelector('#irp_processo_gerador'),
       pdfPublicacao: container.querySelector('#irp_pdf_publicacao'),
-      pdfCi: container.querySelector('#irp_pdf_ci')
+      pdfCi: container.querySelector('#irp_pdf_ci'),
+      busca: container.querySelector('#irp_busca'),
+      filtroAno: container.querySelector('#irp_filtro_ano')
     };
 
     function processosGeradoresRegistroPreco() {
@@ -10273,14 +10313,143 @@ atualizarEtapasConcluidas();
       preview.innerHTML = itensDraft.length ? renderTabelaItens(itensDraft, 10) : '';
     }
 
+    function novaPublicacaoIrp(base = {}) {
+      return {
+        id: base.id || genId(),
+        tipo: base.tipo || 'retificacao',
+        titulo: base.titulo || base.nome || '',
+        data: base.data || base.dataPublicacao || '',
+        dataProrrogacao: base.dataProrrogacao || '',
+        pdf: base.pdf || base.anexo || null
+      };
+    }
+
+    function rotuloTipoPublicacaoIrp(tipo) {
+      const mapa = {
+        retificacao: 'Retificação',
+        prorrogacao: 'Prorrogação',
+        outra: 'Outra publicação'
+      };
+      return mapa[tipo] || 'Publicação';
+    }
+
+    function renderPublicacoesIrpDraft() {
+      const lista = container.querySelector('#irp_publicacoes_lista');
+      if (!lista) return;
+      lista.innerHTML = publicacoesIrpDraft.length ? publicacoesIrpDraft.map((pub, index) => `
+        <div class="irp-publicacao-card" data-irp-pub-card="${index}">
+          <div class="irp-publicacao-head">
+            <strong>${esc(rotuloTipoPublicacaoIrp(pub.tipo))}</strong>
+            <button class="btn danger" type="button" data-irp-pub-remove="${index}">Remover</button>
+          </div>
+          <div class="irp-publicacao-grid">
+            <div class="field">
+              <label>Tipo</label>
+              <select class="input" data-irp-pub-field="tipo">
+                <option value="retificacao" ${pub.tipo === 'retificacao' ? 'selected' : ''}>Retificação</option>
+                <option value="prorrogacao" ${pub.tipo === 'prorrogacao' ? 'selected' : ''}>Prorrogação</option>
+                <option value="outra" ${pub.tipo === 'outra' ? 'selected' : ''}>Outra publicação</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Título</label>
+              <input class="input" data-irp-pub-field="titulo" value="${esc(pub.titulo || '')}" placeholder="Ex: Retificação do aviso da IRP">
+            </div>
+            <div class="field">
+              <label>Data da publicação</label>
+              <input class="input" data-irp-pub-field="data" value="${esc(pub.data || '')}" placeholder="DD/MM/AAAA" maxlength="10">
+            </div>
+            <div class="field">
+              <label>Nova data limite, se houver prorrogação</label>
+              <input class="input" data-irp-pub-field="dataProrrogacao" value="${esc(pub.dataProrrogacao || '')}" placeholder="DD/MM/AAAA" maxlength="10">
+            </div>
+            <div class="field irp-col-span">
+              <label>PDF da publicação</label>
+              <input class="input" data-irp-pub-file="${index}" type="file" accept="application/pdf,.pdf">
+              <div class="muted" style="font-size:12px;margin-top:4px">${pub.pdf?.nome ? `Arquivo atual: ${esc(pub.pdf.nome)}` : 'Nenhum arquivo anexado.'}</div>
+            </div>
+          </div>
+        </div>
+      `).join('') : `<div class="empty">Nenhuma publicação adicional cadastrada.</div>`;
+
+      lista.querySelectorAll('[data-irp-pub-field="data"], [data-irp-pub-field="dataProrrogacao"]').forEach(aplicarMascaraDataLocal);
+    }
+
+    async function coletarPublicacoesIrpDraft(publicacoesAtuais = []) {
+      const cards = [...container.querySelectorAll('[data-irp-pub-card]')];
+      const coletadas = [];
+      for (const card of cards) {
+        const index = Number(card.dataset.irpPubCard);
+        const atual = publicacoesIrpDraft[index] || publicacoesAtuais[index] || {};
+        const fileInput = card.querySelector('[data-irp-pub-file]');
+        const pdf = await arquivoParaBase64Local(fileInput, atual.pdf || atual.anexo || null);
+        const tipo = card.querySelector('[data-irp-pub-field="tipo"]')?.value || 'retificacao';
+        const titulo = card.querySelector('[data-irp-pub-field="titulo"]')?.value.trim() || rotuloTipoPublicacaoIrp(tipo);
+        const data = card.querySelector('[data-irp-pub-field="data"]')?.value.trim() || '';
+        const dataProrrogacao = card.querySelector('[data-irp-pub-field="dataProrrogacao"]')?.value.trim() || '';
+        coletadas.push({
+          id: atual.id || genId(),
+          tipo,
+          titulo,
+          data,
+          dataProrrogacao,
+          pdf
+        });
+      }
+      return coletadas;
+    }
+
+    function textoBuscaIrp(item) {
+      return [
+        item.numero,
+        item.ano,
+        item.situacao,
+        item.prazoManifestacao,
+        item.dataPublicacao,
+        item.objeto,
+        rotuloProcessoGerador(item.processoGerador),
+        ...(Array.isArray(item.publicacoes) ? item.publicacoes.flatMap(pub => [
+          pub.tipo,
+          pub.titulo,
+          pub.data,
+          pub.dataProrrogacao,
+          pub.pdf?.nome
+        ]) : [])
+      ].join(' ').toUpperCase();
+    }
+
+    function irpsFiltradas() {
+      const busca = String(campos.busca?.value || '').trim().toUpperCase();
+      const ano = campos.filtroAno?.value || '';
+      return irps.filter(item => {
+        const passaAno = !ano || String(item.ano || '') === ano;
+        const passaBusca = !busca || textoBuscaIrp(item).includes(busca);
+        return passaAno && passaBusca;
+      });
+    }
+
+    function renderFiltroAnosIrp() {
+      if (!campos.filtroAno) return;
+      const atual = campos.filtroAno.value;
+      const anos = Array.from(new Set(irps.map(item => String(item.ano || '').trim()).filter(Boolean)))
+        .sort((a, b) => Number(a) - Number(b));
+      campos.filtroAno.innerHTML = '<option value="">Todos os anos</option>' + anos.map(ano => `<option value="${esc(ano)}">${esc(ano)}</option>`).join('');
+      if (anos.includes(atual)) campos.filtroAno.value = atual;
+    }
+
     function renderLista() {
       irps = loadIrpsRegistroPreco();
+      renderFiltroAnosIrp();
+      const exibidas = irpsFiltradas();
       lista.innerHTML = irps.length ? `
-        <div style="display:flex;justify-content:space-between;gap:12px;margin-bottom:10px">
-          <strong>${irps.length} IRP(s) cadastrada(s)</strong>
+        <div class="irp-list-head">
+          <div>
+            <strong>${exibidas.length} de ${irps.length} IRP(s)</strong>
+            <span class="muted">Filtradas conforme busca e ano selecionado.</span>
+          </div>
         </div>
         <div style="overflow:auto">
-          <table>
+          <table class="irp-table">
             <thead>
               <tr>
                 <th>IRP</th>
@@ -10295,10 +10464,10 @@ atualizarEtapasConcluidas();
               </tr>
             </thead>
             <tbody>
-              ${irps.map(item => `
+              ${exibidas.length ? exibidas.map(item => `
                 <tr>
                   <td><strong>${esc(item.numero || '')}/${esc(item.ano || '')}</strong></td>
-                  <td>${esc(item.situacao || '')}</td>
+                  <td><span class="irp-status-pill">${esc(item.situacao || '')}</span></td>
                   <td>${esc(item.prazoManifestacao || '')}</td>
                   <td>${esc(item.dataPublicacao || '')}</td>
                   <td>${esc(item.objeto || '')}</td>
@@ -10307,13 +10476,19 @@ atualizarEtapasConcluidas();
                   <td>
                     ${linkPdf(item.pdfPublicacao, 'Publicação')}
                     ${linkPdf(item.pdfCiAbertura, 'Aviso de Abertura')}
+                    ${Array.isArray(item.publicacoes) && item.publicacoes.length ? `
+                      <div class="irp-pub-links">
+                        ${item.publicacoes.map(pub => linkPdf(pub.pdf, pub.titulo || rotuloTipoPublicacaoIrp(pub.tipo))).join('')}
+                        <span class="irp-pub-count">${item.publicacoes.length} extra(s)</span>
+                      </div>
+                    ` : ''}
                   </td>
                   <td>
                     <button class="btn" type="button" data-irp-itens="${esc(item.id)}">Itens</button>
                     <button class="btn" type="button" data-irp-edit="${esc(item.id)}">Editar</button>
                   </td>
                 </tr>
-              `).join('')}
+              `).join('') : `<tr><td colspan="9"><div class="empty">Nenhuma IRP encontrada com os filtros atuais.</div></td></tr>`}
             </tbody>
           </table>
         </div>
@@ -10336,7 +10511,9 @@ atualizarEtapasConcluidas();
       container.querySelector('#irp_pdf_publicacao_status').textContent = atual.pdfPublicacao?.nome ? `Arquivo atual: ${atual.pdfPublicacao.nome}` : '';
       container.querySelector('#irp_pdf_ci_status').textContent = atual.pdfCiAbertura?.nome ? `Arquivo atual: ${atual.pdfCiAbertura.nome}` : '';
       itensDraft = Array.isArray(atual.itens) ? atual.itens : [];
+      publicacoesIrpDraft = Array.isArray(atual.publicacoes) ? atual.publicacoes.map(pub => novaPublicacaoIrp(pub)) : [];
       renderItensDraft();
+      renderPublicacoesIrpDraft();
       container.querySelector('#irp_delete').style.display = id ? 'inline-block' : 'none';
       dlg.showModal();
     }
@@ -10349,14 +10526,28 @@ atualizarEtapasConcluidas();
       if (!campos.situacao.value.trim()) return alert('Informe a situação da IRP.');
       if (!campos.prazo.value.trim()) return alert('Informe o prazo para manifestar interesse.');
       if (!campos.objeto.value.trim()) return alert('Informe o objeto da IRP.');
+      if (salvandoIrp) return;
+
+      salvandoIrp = true;
+      const btnSalvar = container.querySelector('#irp_save');
+      const textoSalvar = btnSalvar?.textContent || 'Salvar';
+      if (btnSalvar) {
+        btnSalvar.disabled = true;
+        btnSalvar.textContent = 'Salvando...';
+      }
+      showToast('Salvando IRP...');
+
+      try {
 
       const idx = irps.findIndex(item => item.id === editId);
       const atual = idx >= 0 ? irps[idx] : {};
       let pdfPublicacao = null;
       let pdfCiAbertura = null;
+      let publicacoes = [];
       try {
         pdfPublicacao = await arquivoParaBase64Local(campos.pdfPublicacao, atual.pdfPublicacao);
         pdfCiAbertura = await arquivoParaBase64Local(campos.pdfCi, atual.pdfCiAbertura);
+        publicacoes = await coletarPublicacoesIrpDraft(atual.publicacoes || []);
       } catch (error) {
         console.error('Erro ao salvar anexos da IRP:', error);
         return alert('Não foi possível salvar os PDFs da IRP no IndexedDB. Verifique se o navegador permite armazenamento local para este arquivo.');
@@ -10373,6 +10564,7 @@ atualizarEtapasConcluidas();
         dataPublicacao: campos.publicacaoData.value.trim(),
         pdfPublicacao,
         pdfCiAbertura,
+        publicacoes,
         criadoEm: atual.criadoEm || new Date().toLocaleString('pt-BR'),
         atualizadoEm: new Date().toLocaleString('pt-BR')
       };
@@ -10395,6 +10587,10 @@ atualizarEtapasConcluidas();
 
         item.pdfPublicacao = atual.pdfPublicacao || null;
         item.pdfCiAbertura = atual.pdfCiAbertura || null;
+        item.publicacoes = (item.publicacoes || []).map(pub => {
+          const anterior = (atual.publicacoes || []).find(old => old.id === pub.id);
+          return { ...pub, pdf: anterior?.pdf || null };
+        });
         if (idx >= 0) irps[idx] = item;
         else irps[0] = item;
 
@@ -10413,6 +10609,13 @@ atualizarEtapasConcluidas();
       dlg.close();
       renderLista();
       showToast('IRP salva com sucesso.');
+      } finally {
+        salvandoIrp = false;
+        if (btnSalvar) {
+          btnSalvar.disabled = false;
+          btnSalvar.textContent = textoSalvar;
+        }
+      }
     }
 
     container.querySelector('#irp_add').onclick = () => abrirForm();
@@ -10420,6 +10623,12 @@ atualizarEtapasConcluidas();
     container.querySelector('#irp_cancel').onclick = () => dlg.close();
     container.querySelector('#irp_save').onclick = salvarForm;
     container.querySelector('#irp_itens_close').onclick = () => dlgItens.close();
+    container.querySelector('#irp_pub_add').onclick = () => {
+      publicacoesIrpDraft.push(novaPublicacaoIrp());
+      renderPublicacoesIrpDraft();
+    };
+    campos.busca?.addEventListener('input', renderLista);
+    campos.filtroAno?.addEventListener('change', renderLista);
     container.querySelector('#irp_delete').onclick = async () => {
       if (!editId || !confirm('Excluir esta IRP?')) return;
       try {
@@ -10439,6 +10648,16 @@ atualizarEtapasConcluidas();
 
     container.querySelector('#irp_import_itens').onclick = () => container.querySelector('#irp_itens_file').click();
     container.addEventListener('click', (event) => {
+      const removerPub = event.target.closest('[data-irp-pub-remove]');
+      if (removerPub && container.contains(removerPub)) {
+        const index = Number(removerPub.dataset.irpPubRemove);
+        if (Number.isInteger(index)) {
+          publicacoesIrpDraft.splice(index, 1);
+          renderPublicacoesIrpDraft();
+        }
+        return;
+      }
+
       const botao = event.target.closest('#irp_import_homologados');
       if (!botao || !container.contains(botao)) return;
       event.preventDefault();

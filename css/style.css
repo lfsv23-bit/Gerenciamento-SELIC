@@ -511,6 +511,175 @@ dialog {
   font-size: 12px;
 }
 
+/* Página e editor de IRP */
+.irp-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.irp-filter-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 220px;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.irp-list-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.irp-list-head span {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.irp-table td {
+  vertical-align: middle;
+}
+
+.irp-status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.irp-pub-links {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.irp-pub-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border: 1px solid #dbe3ef;
+  border-radius: 10px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.irp-editor-dialog {
+  width: min(980px, 96vw);
+  max-height: 92vh;
+  overflow: hidden;
+}
+
+.irp-editor-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f8fafc;
+}
+
+.irp-editor-head strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.irp-eyebrow {
+  display: block;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.irp-editor-body {
+  max-height: calc(92vh - 132px);
+  overflow: auto;
+  padding: 18px 22px 28px;
+}
+
+.irp-editor-dialog .modal-foot {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+}
+
+.irp-form-section {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #fbfdff;
+}
+
+.irp-form-title {
+  margin: -14px -14px 14px;
+  padding: 11px 14px;
+  border-bottom: 1px solid #dbe3ef;
+  border-radius: 12px 12px 0 0;
+  background: #eef6ff;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.irp-form-grid,
+.irp-publicacao-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 14px;
+}
+
+.irp-col-span {
+  grid-column: 1 / -1;
+}
+
+.irp-section-row,
+.irp-publicacao-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.irp-publicacoes-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.irp-publicacao-card {
+  padding: 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.irp-publicacao-head {
+  margin-bottom: 10px;
+}
+
+.irp-publicacao-head strong {
+  color: #1e3a8a;
+  font-size: 13px;
+}
+
 .ata-process-card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -938,6 +1107,22 @@ dialog {
   }
   .ata-form-grid {
     grid-template-columns: 1fr;
+  }
+  .irp-page-head {
+    flex-direction: column;
+  }
+  .irp-filter-card,
+  .irp-form-grid,
+  .irp-publicacao-grid {
+    grid-template-columns: 1fr;
+  }
+  .irp-editor-dialog {
+    width: 98vw;
+    max-height: 96vh;
+  }
+  .irp-editor-body {
+    max-height: calc(96vh - 132px);
+    padding: 14px;
   }
   .ata-editor-grid {
     grid-template-columns: 1fr;
