@@ -9292,6 +9292,16 @@ atualizarEtapasConcluidas();
     let filtro = "";
     let pessoasDraft = [];
     let processosFornecedoresCache = await carregarProcessosLicitatoriosFonte({ silencioso: true });
+    const cnpjBaseSessao = window.__cnpjCsvBaseSession || {
+      carregada: false,
+      total: 0,
+      nomeArquivo: "",
+      registros: new Map()
+    };
+    window.__cnpjCsvBaseSession = cnpjBaseSessao;
+    let consultaCnpj = "";
+    let resultadoConsultaCnpj = null;
+    let mensagemConsultaCnpj = "";
 
     const esc = (value) => String(value || "")
       .replace(/&/g, "&amp;")
@@ -9299,6 +9309,163 @@ atualizarEtapasConcluidas();
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+
+    function normalizarCnpjTexto(value) {
+      return String(value || "").replace(/[.\-/\s]/g, "").trim().toUpperCase();
+    }
+
+    function formatarCnpjConsulta(value) {
+      const texto = String(value || "").trim();
+      const digits = onlyDigits(texto);
+      return digits.length === 14 && normalizarCnpjTexto(texto) === digits ? formatCnpj(digits) : texto;
+    }
+
+    function separarLinhaCsv(linha) {
+      const colunas = [];
+      let atual = "";
+      let dentroAspas = false;
+      for (let i = 0; i < linha.length; i += 1) {
+        const char = linha[i];
+        const proximo = linha[i + 1];
+        if (char === '"' && dentroAspas && proximo === '"') {
+          atual += '"';
+          i += 1;
+        } else if (char === '"') {
+          dentroAspas = !dentroAspas;
+        } else if (char === "," && !dentroAspas) {
+          colunas.push(atual.trim());
+          atual = "";
+        } else {
+          atual += char;
+        }
+      }
+      colunas.push(atual.trim());
+      return colunas;
+    }
+
+    function carregarRegistrosCnpjCsv(texto) {
+      const linhas = String(texto || "").split(/\r?\n/).filter(linha => linha.trim());
+      if (linhas.length < 2) throw new Error("O CSV precisa ter cabeçalho e ao menos um registro.");
+
+      const cabecalho = separarLinhaCsv(linhas[0]).map(coluna => coluna.replace(/^\uFEFF/, "").trim().toLowerCase());
+      const idxCnpj = cabecalho.indexOf("cnpj");
+      const idxRazao = cabecalho.indexOf("razao_social");
+      const idxFantasia = cabecalho.indexOf("nome_fantasia");
+      if (idxCnpj < 0 || idxRazao < 0 || idxFantasia < 0) {
+        throw new Error("O CSV precisa conter as colunas cnpj, razao_social e nome_fantasia.");
+      }
+
+      const registros = new Map();
+      linhas.slice(1).forEach(linha => {
+        const colunas = separarLinhaCsv(linha);
+        const cnpjNormalizado = normalizarCnpjTexto(colunas[idxCnpj]);
+        if (!cnpjNormalizado) return;
+        registros.set(cnpjNormalizado, {
+          cnpj: cnpjNormalizado,
+          razaoSocial: colunas[idxRazao] || "",
+          nomeFantasia: colunas[idxFantasia] || ""
+        });
+      });
+      return registros;
+    }
+
+    function fornecedorExistentePorCnpj(cnpjNormalizado) {
+      return loadFornecedores().find(f => normalizarCnpjTexto(f.cnpj) === cnpjNormalizado) || null;
+    }
+
+    async function consultarCnpjBaseLocal() {
+      const cnpjNormalizado = normalizarCnpjTexto(consultaCnpj);
+      resultadoConsultaCnpj = null;
+      if (!cnpjNormalizado) {
+        mensagemConsultaCnpj = "Informe um CNPJ para consultar.";
+        return;
+      }
+
+      const existente = fornecedorExistentePorCnpj(cnpjNormalizado);
+      if (existente) {
+        resultadoConsultaCnpj = {
+          origem: "cadastro",
+          fornecedor: {
+            cnpj: existente.cnpj || cnpjNormalizado,
+            razaoSocial: existente.razaoSocial || "",
+            nomeFantasia: existente.nomeFantasia || ""
+          }
+        };
+        mensagemConsultaCnpj = "Fornecedor já localizado no cadastro.";
+        return;
+      }
+
+      if (!cnpjBaseSessao.carregada) {
+        mensagemConsultaCnpj = "Carregue uma base CNPJ antes de consultar.";
+        return;
+      }
+
+      const registro = cnpjBaseSessao.registros.get(cnpjNormalizado);
+      if (!registro) {
+        mensagemConsultaCnpj = "CNPJ não encontrado na base local.";
+        return;
+      }
+
+      resultadoConsultaCnpj = { origem: "base_local", fornecedor: registro };
+      mensagemConsultaCnpj = "";
+    }
+
+    function renderResultadoConsultaCnpj() {
+      const alvo = container.querySelector('#cnpj_consulta_result');
+      if (!alvo) return;
+
+      if (resultadoConsultaCnpj?.fornecedor) {
+        const fornecedor = resultadoConsultaCnpj.fornecedor;
+        const jaCadastrado = resultadoConsultaCnpj.origem === "cadastro";
+        alvo.innerHTML = `
+          <div class="cnpj-result-card">
+            <div class="cnpj-result-head">
+              <div>
+                <span>${jaCadastrado ? "Fornecedor cadastrado" : "Fornecedor encontrado"}</span>
+                <strong>${esc(fornecedor.razaoSocial || "Razão social não informada")}</strong>
+              </div>
+              <button type="button" class="btn primary" id="cnpj_usar_fornecedor" ${jaCadastrado ? "disabled" : ""}>
+                ${jaCadastrado ? "Já cadastrado" : "Usar este fornecedor"}
+              </button>
+            </div>
+            <div class="cnpj-result-grid">
+              <div><span>CNPJ</span><strong>${esc(formatarCnpjConsulta(fornecedor.cnpj))}</strong></div>
+              <div><span>Razão Social</span><strong>${esc(fornecedor.razaoSocial || "")}</strong></div>
+              <div><span>Nome Fantasia</span><strong>${esc(fornecedor.nomeFantasia || "") || '<span class="muted">Não informado</span>'}</strong></div>
+            </div>
+          </div>
+        `;
+        const usar = alvo.querySelector('#cnpj_usar_fornecedor');
+        if (usar && !jaCadastrado) usar.onclick = usarFornecedorConsultado;
+        return;
+      }
+
+      alvo.innerHTML = mensagemConsultaCnpj ? `<div class="cnpj-consulta-message">${esc(mensagemConsultaCnpj)}</div>` : "";
+    }
+
+    async function usarFornecedorConsultado() {
+      const registro = resultadoConsultaCnpj?.fornecedor;
+      if (!registro) return;
+      const cnpjNormalizado = normalizarCnpjTexto(registro.cnpj);
+      const atual = fornecedorExistentePorCnpj(cnpjNormalizado);
+      const fornecedor = {
+        id: atual?.id || genId(),
+        cnpj: formatarCnpjConsulta(registro.cnpj),
+        razaoSocial: registro.razaoSocial || "",
+        nomeFantasia: registro.nomeFantasia || ""
+      };
+
+      try {
+        const salvo = await salvarFornecedorPrincipal(fornecedor);
+        resultadoConsultaCnpj = { origem: "cadastro", fornecedor: salvo };
+        mensagemConsultaCnpj = "Fornecedor salvo no cadastro.";
+        render();
+        showToast('Fornecedor salvo a partir da base local.');
+      } catch (error) {
+        mensagemConsultaCnpj = `Não foi possível salvar o fornecedor: ${error?.message || error}`;
+        renderResultadoConsultaCnpj();
+      }
+    }
 
     async function sincronizarFornecedoresDosProcessos() {
       const fornecedoresAntes = loadFornecedores();
@@ -9627,6 +9794,30 @@ atualizarEtapasConcluidas();
             </div>
           </header>
 
+          <div class="cnpj-consulta-card">
+            <div class="cnpj-consulta-head">
+              <div>
+                <strong>Consulta de CNPJ</strong>
+                <span>Carregue um CSV local temporário para localizar fornecedores nesta sessão.</span>
+              </div>
+              <button type="button" class="btn" id="cnpj_base_load">Carregar Base CNPJ</button>
+              <input type="file" id="cnpj_base_file" accept=".csv,text/csv" hidden>
+            </div>
+            <div class="cnpj-base-status" id="cnpj_base_status">
+              ${cnpjBaseSessao.carregada
+                ? `Base carregada com sucesso - ${cnpjBaseSessao.total} registros disponíveis.`
+                : "Nenhuma base CNPJ carregada nesta sessão."}
+            </div>
+            <div class="cnpj-consulta-form">
+              <div class="field">
+                <label>CNPJ</label>
+                <input id="cnpj_consulta_input" class="input" placeholder="Digite o CNPJ para consultar" value="${esc(consultaCnpj)}">
+              </div>
+              <button type="button" class="btn primary" id="cnpj_consultar">Consultar</button>
+            </div>
+            <div id="cnpj_consulta_result"></div>
+          </div>
+
           <div class="card" style="margin-bottom:12px">
             <div class="grid" style="grid-template-columns:1fr auto;align-items:end">
               <div class="field">
@@ -9770,11 +9961,56 @@ atualizarEtapasConcluidas();
       const form = container.querySelector('#fornecedor_form');
       const cnpjInput = container.querySelector('#forn_cnpj');
       const cpfPessoaInput = container.querySelector('#forn_pessoa_cpf');
+      const cnpjBaseFile = container.querySelector('#cnpj_base_file');
+      const cnpjConsultaInput = container.querySelector('#cnpj_consulta_input');
 
       search.addEventListener('input', () => {
         filtro = search.value;
         render();
       });
+
+      renderResultadoConsultaCnpj();
+
+      container.querySelector('#cnpj_base_load').onclick = () => cnpjBaseFile.click();
+      cnpjBaseFile.addEventListener('change', async () => {
+        const arquivo = cnpjBaseFile.files?.[0];
+        if (!arquivo) return;
+        try {
+          const texto = await arquivo.text();
+          const registros = carregarRegistrosCnpjCsv(texto);
+          cnpjBaseSessao.registros = registros;
+          cnpjBaseSessao.carregada = true;
+          cnpjBaseSessao.total = registros.size;
+          cnpjBaseSessao.nomeArquivo = arquivo.name || "";
+          resultadoConsultaCnpj = null;
+          mensagemConsultaCnpj = `Base carregada com sucesso - ${registros.size} registros disponíveis.`;
+          render();
+          showToast(`Base CNPJ carregada: ${registros.size} registro(s).`);
+        } catch (error) {
+          console.error('[CNPJ][CSV][ERRO]', error);
+          resultadoConsultaCnpj = null;
+          mensagemConsultaCnpj = error?.message || String(error || "Não foi possível carregar a base CNPJ.");
+          renderResultadoConsultaCnpj();
+          alert(`Não foi possível carregar a base CNPJ.\n\nDetalhe: ${mensagemConsultaCnpj}`);
+        } finally {
+          cnpjBaseFile.value = "";
+        }
+      });
+
+      cnpjConsultaInput.addEventListener('input', () => {
+        consultaCnpj = cnpjConsultaInput.value;
+      });
+      cnpjConsultaInput.addEventListener('keydown', async (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        await consultarCnpjBaseLocal();
+        renderResultadoConsultaCnpj();
+      });
+      container.querySelector('#cnpj_consultar').onclick = async () => {
+        consultaCnpj = cnpjConsultaInput.value;
+        await consultarCnpjBaseLocal();
+        renderResultadoConsultaCnpj();
+      };
 
       container.querySelector('#forn_new').onclick = () => abrirModal();
       container.querySelector('#forn_sync').onclick = async () => {
