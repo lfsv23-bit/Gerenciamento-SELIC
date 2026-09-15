@@ -625,6 +625,118 @@ dialog {
   font-size: 13px;
 }
 
+/* Página de Produtos */
+.produtos-page {
+  color: #0f172a;
+}
+
+.produtos-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.produtos-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.produtos-summary div {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.produtos-summary span,
+.produto-detail-grid span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.produtos-summary strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 22px;
+}
+
+.produtos-filter-card {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 190px 260px;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.produtos-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.produtos-table-wrap {
+  overflow: auto;
+}
+
+.produtos-table {
+  min-width: 1180px;
+}
+
+.produtos-table th,
+.produtos-table td {
+  vertical-align: top;
+}
+
+.produtos-table td:first-child {
+  min-width: 300px;
+}
+
+.produto-origem {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.produto-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.produto-detail-grid div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.produto-detail-grid strong {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
 /* Página e editor de IRP */
 .irp-page-head {
   display: flex;
@@ -1228,6 +1340,16 @@ dialog {
   }
   .cnpj-consulta-form,
   .cnpj-result-grid {
+    grid-template-columns: 1fr;
+  }
+  .produtos-head,
+  .produtos-list-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .produtos-summary,
+  .produtos-filter-card,
+  .produto-detail-grid {
     grid-template-columns: 1fr;
   }
   .irp-page-head {

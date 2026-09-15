@@ -9285,6 +9285,358 @@ atualizarEtapasConcluidas();
     });
   }
 
+  async function initProdutos(container) {
+    if (typeof container === 'string') container = document.getElementById(container);
+    if (!container) throw new Error('Container inválido');
+
+    let processos = [];
+    let produtos = [];
+    let filtro = "";
+    let filtroOrigem = "";
+    let filtroSecretaria = "";
+
+    const esc = (value) => String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+
+    const normalizar = (value) => String(value || "")
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+
+    function textoValor(value) {
+      const numero = parseBRLToNumber(value);
+      return numero === null ? String(value || "") : formatBRLDisplay(numero);
+    }
+
+    function calcularTotal(quantidade, valorUnitario, valorTotal) {
+      const totalInformado = parseBRLToNumber(valorTotal);
+      if (totalInformado !== null) return formatBRLDisplay(totalInformado);
+      const qtd = parseBRLToNumber(quantidade);
+      const unit = parseBRLToNumber(valorUnitario);
+      if (qtd === null || unit === null) return "";
+      return formatBRLDisplay(qtd * unit);
+    }
+
+    function textoFornecedor(item = {}) {
+      const nome = item.razaoSocial || item.nomeFantasia || item.fornecedorRazao || item.fornecedorFantasia || "";
+      const cnpj = item.cnpj || item.fornecedorCnpj || "";
+      return [nome, cnpj].filter(Boolean).join(" - ");
+    }
+
+    function itemDeObjeto(item = {}, contexto = {}) {
+      const quantidade = item.quantidade || item.qtd || "";
+      const valorUnitario = item.valorUnitario || item.unitario || item.valor || "";
+      const valorTotal = item.valorTotal || item.total || "";
+      return {
+        id: `${contexto.processo?.id || contexto.processo?.numero || "proc"}-${contexto.origem || "item"}-${contexto.index}`,
+        processo: contexto.processo,
+        origem: contexto.origem,
+        vinculo: contexto.vinculo || "",
+        codigo: item.codigo || "",
+        descricao: item.descricao || item.nome || item.produto || "",
+        unidade: item.unidade || item.unidadeMedida || "",
+        quantidade,
+        valorUnitario,
+        valorTotal: calcularTotal(quantidade, valorUnitario, valorTotal),
+        situacao: item.situacao || "",
+        fornecedor: textoFornecedor(item),
+        pessoaVinculada: item.pessoaVinculadaNome || "",
+        tipoVinculo: item.pessoaVinculadaTipo || "",
+        itemOriginal: item
+      };
+    }
+
+    function linhaTabelaParaProduto(row, headers, contexto = {}) {
+      const celulas = Array.isArray(row) ? row : [];
+      const cabecalho = Array.isArray(headers) ? headers.map(normalizar) : [];
+      const achar = (...termos) => {
+        const idx = cabecalho.findIndex(coluna => termos.some(termo => coluna.includes(normalizar(termo))));
+        return idx >= 0 ? idx : -1;
+      };
+      const idxCodigo = achar("codigo", "código");
+      const idxDescricao = achar("descricao", "descrição", "produto", "servico", "serviço", "objeto");
+      const idxUnidade = achar("unidade", "medida");
+      const idxQuantidade = achar("quantidade", "qtd");
+      const idxUnitario = achar("unitario", "unitário", "valor unit");
+      const idxTotal = achar("total");
+      const quantidade = idxQuantidade >= 0 ? celulas[idxQuantidade] : "";
+      const valorUnitario = idxUnitario >= 0 ? celulas[idxUnitario] : "";
+      const valorTotal = idxTotal >= 0 ? celulas[idxTotal] : "";
+      return {
+        id: `${contexto.processo?.id || contexto.processo?.numero || "proc"}-${contexto.origem || "tabela"}-${contexto.vinculo || ""}-${contexto.index}`,
+        processo: contexto.processo,
+        origem: contexto.origem,
+        vinculo: contexto.vinculo || "",
+        codigo: idxCodigo >= 0 ? celulas[idxCodigo] : "",
+        descricao: idxDescricao >= 0 ? celulas[idxDescricao] : (celulas[1] || celulas[0] || ""),
+        unidade: idxUnidade >= 0 ? celulas[idxUnidade] : "",
+        quantidade,
+        valorUnitario,
+        valorTotal: calcularTotal(quantidade, valorUnitario, valorTotal),
+        situacao: "",
+        fornecedor: contexto.fornecedor || "",
+        pessoaVinculada: "",
+        tipoVinculo: "",
+        itemOriginal: row
+      };
+    }
+
+    function adicionarTabelaItens(lista, contexto = {}) {
+      if (!Array.isArray(lista) || !lista.length) return [];
+      const linhas = lista.map(item => Array.isArray(item)
+        ? item
+        : [
+            item.codigo || "",
+            item.descricao || "",
+            item.unidade || "",
+            item.quantidade || "",
+            item.valorUnitario || "",
+            item.valorTotal || ""
+          ]);
+      const headers = linhas[0] || [];
+      return linhas.slice(1)
+        .filter(row => Array.isArray(row) && row.some(cell => String(cell || "").trim()))
+        .map((row, index) => linhaTabelaParaProduto(row, headers, { ...contexto, index }));
+    }
+
+    function montarProdutos(listaProcessos) {
+      const linhas = [];
+      (Array.isArray(listaProcessos) ? listaProcessos : []).forEach(processo => {
+        (Array.isArray(processo.itensProcesso) ? processo.itensProcesso : []).forEach((item, index) => {
+          linhas.push(itemDeObjeto(item, { processo, origem: "ETP", vinculo: "Itens do processo", index }));
+        });
+
+        (Array.isArray(processo.cotItens) ? processo.cotItens : []).forEach((item, index) => {
+          linhas.push(itemDeObjeto(item, { processo, origem: "Cotação", vinculo: "Itens da cotação", index }));
+        });
+
+        linhasResultadoProcesso(processo).forEach((item, index) => {
+          linhas.push(itemDeObjeto(item, { processo, origem: "Resultado", vinculo: "Resultado/Homologação", index }));
+        });
+
+        (Array.isArray(processo.atasRegistroPreco) ? processo.atasRegistroPreco : []).forEach((ata, ataIndex) => {
+          const fornecedor = [ata.fornecedorRazao || ata.fornecedorFantasia || "", ata.fornecedorCnpj || ""].filter(Boolean).join(" - ");
+          linhas.push(...adicionarTabelaItens(ata.itens, {
+            processo,
+            origem: "Ata",
+            vinculo: `Ata ${ata.numero || ""}/${ata.ano || ""}`.trim(),
+            fornecedor,
+            index: ataIndex
+          }));
+        });
+      });
+      return linhas.filter(item => item.descricao || item.codigo);
+    }
+
+    function produtosFiltrados() {
+      const termo = normalizar(filtro);
+      return produtos.filter(item => {
+        if (filtroOrigem && item.origem !== filtroOrigem) return false;
+        if (filtroSecretaria && (item.processo?.secretaria || "") !== filtroSecretaria) return false;
+        if (!termo) return true;
+        return normalizar([
+          item.codigo,
+          item.descricao,
+          item.unidade,
+          item.quantidade,
+          item.valorUnitario,
+          item.valorTotal,
+          item.situacao,
+          item.fornecedor,
+          item.pessoaVinculada,
+          item.tipoVinculo,
+          item.origem,
+          item.vinculo,
+          item.processo?.numero,
+          item.processo?.objeto,
+          item.processo?.secretaria,
+          item.processo?.modalidade
+        ].join(" ")).includes(termo);
+      });
+    }
+
+    function renderDetalhesProduto(item) {
+      return `
+        <div class="produto-detail-grid">
+          <div><span>Produto/Serviço</span><strong>${esc(item.descricao || "")}</strong></div>
+          <div><span>Código</span><strong>${esc(item.codigo || "Não informado")}</strong></div>
+          <div><span>Origem</span><strong>${esc(item.origem || "")}</strong></div>
+          <div><span>Vínculo</span><strong>${esc(item.vinculo || "")}</strong></div>
+          <div><span>Processo</span><strong>${esc(item.processo?.numero || "")}</strong></div>
+          <div><span>Objeto do Processo</span><strong>${esc(item.processo?.objeto || "")}</strong></div>
+          <div><span>Secretaria</span><strong>${esc(item.processo?.secretaria || "")}</strong></div>
+          <div><span>Fornecedor/Pessoa</span><strong>${esc([item.fornecedor, item.pessoaVinculada, item.tipoVinculo].filter(Boolean).join(" | ") || "Não informado")}</strong></div>
+        </div>
+      `;
+    }
+
+    function abrirDetalhesProduto(produtoId) {
+      const item = produtos.find(row => row.id === produtoId);
+      if (!item) return;
+      const dlg = container.querySelector('#produto_dlg');
+      const body = container.querySelector('#produto_dlg_body');
+      body.innerHTML = renderDetalhesProduto(item);
+      dlg.showModal();
+    }
+
+    function opcoes(lista) {
+      return [...new Set(lista.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
+    }
+
+    function render() {
+      const filtrados = produtosFiltrados();
+      const origens = opcoes(produtos.map(item => item.origem));
+      const secretarias = opcoes(produtos.map(item => item.processo?.secretaria));
+      const produtosUnicos = new Set(produtos.map(item => normalizar(`${item.codigo}|${item.descricao}|${item.unidade}`)).filter(Boolean)).size;
+      const processosComProdutos = new Set(produtos.map(item => item.processo?.id || item.processo?.numero).filter(Boolean)).size;
+
+      container.innerHTML = `
+        <section class="wrap produtos-page">
+          <header class="produtos-head">
+            <div>
+              <h2 style="margin:0 0 6px 0">Produtos</h2>
+              <div class="muted">Itens consolidados a partir dos processos cadastrados.</div>
+            </div>
+            <button type="button" class="btn" id="produtos_reload">Atualizar produtos</button>
+          </header>
+
+          <div class="produtos-summary">
+            <div><span>Total de registros</span><strong>${produtos.length}</strong></div>
+            <div><span>Produtos únicos</span><strong>${produtosUnicos}</strong></div>
+            <div><span>Processos vinculados</span><strong>${processosComProdutos}</strong></div>
+          </div>
+
+          <div class="produtos-filter-card">
+            <div class="field">
+              <label>Buscar produto</label>
+              <input id="produtos_busca" class="input" placeholder="Buscar por descrição, código, processo, fornecedor, secretaria..." value="${esc(filtro)}">
+            </div>
+            <div class="field">
+              <label>Origem</label>
+              <select id="produtos_origem" class="select">
+                <option value="">Todas as origens</option>
+                ${origens.map(origem => `<option value="${esc(origem)}" ${filtroOrigem === origem ? "selected" : ""}>${esc(origem)}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field">
+              <label>Secretaria</label>
+              <select id="produtos_secretaria" class="select">
+                <option value="">Todas as secretarias</option>
+                ${secretarias.map(secretaria => `<option value="${esc(secretaria)}" ${filtroSecretaria === secretaria ? "selected" : ""}>${esc(secretaria)}</option>`).join("")}
+              </select>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="produtos-list-head">
+              <strong>${filtrados.length} produto(s) encontrado(s)</strong>
+              <span class="muted">Fonte: processos, cotações, resultados e atas vinculadas.</span>
+            </div>
+            ${filtrados.length ? `
+              <div class="produtos-table-wrap">
+                <table class="produtos-table">
+                  <thead>
+                    <tr>
+                      <th>Produto/Serviço</th>
+                      <th>Código</th>
+                      <th>Unidade</th>
+                      <th>Qtd.</th>
+                      <th>Valor Unit.</th>
+                      <th>Valor Total</th>
+                      <th>Origem</th>
+                      <th>Processo/Vínculo</th>
+                      <th>Fornecedor</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${filtrados.map(item => `
+                      <tr>
+                        <td><strong>${esc(item.descricao || "")}</strong><br><span class="muted">${esc(item.processo?.objeto || "")}</span></td>
+                        <td>${esc(item.codigo || "")}</td>
+                        <td>${esc(item.unidade || "")}</td>
+                        <td>${esc(item.quantidade || "")}</td>
+                        <td>${esc(textoValor(item.valorUnitario))}</td>
+                        <td>${esc(item.valorTotal || "")}</td>
+                        <td><span class="produto-origem">${esc(item.origem || "")}</span></td>
+                        <td><strong>${esc(item.processo?.numero || "")}</strong><br><span class="muted">${esc(item.vinculo || "")}</span></td>
+                        <td>${esc(item.fornecedor || item.pessoaVinculada || "")}</td>
+                        <td><button type="button" class="btn" data-produto-detalhe="${esc(item.id)}">Vínculos</button></td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              </div>
+            ` : `<div class="empty">Nenhum produto encontrado nos processos cadastrados.</div>`}
+          </div>
+
+          <dialog id="produto_dlg" style="width:min(760px,94vw)">
+            <div class="modal-head">
+              <strong>Vínculos do Produto</strong>
+              <button type="button" class="btn ghost" id="produto_dlg_close">Fechar</button>
+            </div>
+            <div class="modal-body" id="produto_dlg_body"></div>
+          </dialog>
+        </section>
+      `;
+
+      container.querySelector('#produtos_busca').addEventListener('input', event => {
+        filtro = event.target.value;
+        render();
+      });
+      container.querySelector('#produtos_origem').addEventListener('change', event => {
+        filtroOrigem = event.target.value;
+        render();
+      });
+      container.querySelector('#produtos_secretaria').addEventListener('change', event => {
+        filtroSecretaria = event.target.value;
+        render();
+      });
+      container.querySelector('#produtos_reload').onclick = carregar;
+      container.querySelector('#produto_dlg_close').onclick = () => container.querySelector('#produto_dlg').close();
+      container.querySelectorAll('[data-produto-detalhe]').forEach(btn => {
+        btn.onclick = () => abrirDetalhesProduto(btn.dataset.produtoDetalhe);
+      });
+    }
+
+    async function carregar() {
+      container.innerHTML = `
+        <section class="wrap">
+          <div class="card module-loading">
+            <div class="module-spinner"></div>
+            <div>
+              <h2>Carregando produtos</h2>
+              <p class="muted">Aguarde enquanto os itens dos processos são consolidados.</p>
+            </div>
+          </div>
+        </section>
+      `;
+      try {
+        processos = await carregarProcessosLicitatoriosFonte({ silencioso: true });
+        produtos = montarProdutos(processos);
+        render();
+      } catch (error) {
+        console.error('[PRODUTOS][CARREGAR][ERRO]', error);
+        container.innerHTML = `
+          <section class="wrap">
+            <div class="card">
+              <h2>Erro ao carregar produtos</h2>
+              <p class="muted">${esc(error?.message || error)}</p>
+            </div>
+          </section>
+        `;
+      }
+    }
+
+    await carregar();
+  }
+
   async function initFornecedores(container) {
     if (typeof container === 'string') container = document.getElementById(container);
     if (!container) throw new Error('Container inválido');
@@ -12647,6 +12999,7 @@ atualizarEtapasConcluidas();
   window.initConversorItensEdital = initConversorItensEdital;
   window.initConversorItensAta = initConversorItensAta;
   window.initFornecedores = initFornecedores;
+  window.initProdutos = initProdutos;
 })();
 
 
