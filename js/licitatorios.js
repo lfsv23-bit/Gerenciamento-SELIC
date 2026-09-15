@@ -9291,9 +9291,12 @@ atualizarEtapasConcluidas();
 
     let processos = [];
     let produtos = [];
+    let produtosAvulsos = [];
     let filtro = "";
     let filtroOrigem = "";
     let filtroSecretaria = "";
+    let produtoEmEdicao = null;
+    const PRODUTOS_AVULSOS_KEY = "produtosAvulsosCadastro";
 
     const esc = (value) => String(value || "")
       .replace(/&/g, "&amp;")
@@ -9324,9 +9327,54 @@ atualizarEtapasConcluidas();
     }
 
     function textoFornecedor(item = {}) {
-      const nome = item.razaoSocial || item.nomeFantasia || item.fornecedorRazao || item.fornecedorFantasia || "";
+      const nome = item.fornecedor || item.razaoSocial || item.nomeFantasia || item.fornecedorRazao || item.fornecedorFantasia || "";
       const cnpj = item.cnpj || item.fornecedorCnpj || "";
       return [nome, cnpj].filter(Boolean).join(" - ");
+    }
+
+    function formatCodigoProduto(value) {
+      const digits = String(value || "").replace(/\D/g, "").slice(0, 9);
+      return digits
+        .replace(/^(\d{3})(\d)/, "$1.$2")
+        .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3");
+    }
+
+    async function carregarProdutosAvulsos() {
+      if (window.isSupabaseConfigured?.() && window.AppDatabase?.obterAppSetting) {
+        const valor = await window.AppDatabase.obterAppSetting(PRODUTOS_AVULSOS_KEY, []);
+        return Array.isArray(valor) ? valor : [];
+      }
+      try {
+        return JSON.parse(localStorage.getItem(PRODUTOS_AVULSOS_KEY) || "[]");
+      } catch {
+        return [];
+      }
+    }
+
+    async function salvarProdutosAvulsos(lista) {
+      const payload = Array.isArray(lista) ? lista : [];
+      if (window.isSupabaseConfigured?.() && window.AppDatabase?.salvarAppSetting) {
+        await window.AppDatabase.salvarAppSetting(PRODUTOS_AVULSOS_KEY, payload);
+      } else {
+        localStorage.setItem(PRODUTOS_AVULSOS_KEY, JSON.stringify(payload));
+      }
+      produtosAvulsos = payload;
+    }
+
+    async function salvarProcessoComProduto(processo) {
+      if (!processo) return;
+      if (window.isSupabaseConfigured?.() && window.AppDatabase?.saveProcessoCompleto) {
+        await window.AppDatabase.requireAuthenticatedUser?.();
+        const salvo = await window.AppDatabase.saveProcessoCompleto(processo);
+        const idx = processos.findIndex(p => p.id === processo.id || p.supabaseId === processo.supabaseId || p.numero === processo.numero);
+        if (idx >= 0) processos[idx] = salvo || processo;
+        return salvo;
+      }
+      const locais = loadData();
+      const idx = locais.findIndex(p => p.id === processo.id || p.numero === processo.numero);
+      if (idx >= 0) locais[idx] = processo;
+      saveData(locais, { localOnly: true });
+      return processo;
     }
 
     function itemDeObjeto(item = {}, contexto = {}) {
@@ -9338,6 +9386,12 @@ atualizarEtapasConcluidas();
         processo: contexto.processo,
         origem: contexto.origem,
         vinculo: contexto.vinculo || "",
+        source: {
+          tipo: contexto.tipo || "objeto",
+          array: contexto.array || "",
+          index: contexto.index,
+          divisaoIndex: contexto.divisaoIndex ?? null
+        },
         codigo: item.codigo || "",
         descricao: item.descricao || item.nome || item.produto || "",
         unidade: item.unidade || item.unidadeMedida || "",
@@ -9373,6 +9427,13 @@ atualizarEtapasConcluidas();
         processo: contexto.processo,
         origem: contexto.origem,
         vinculo: contexto.vinculo || "",
+        source: {
+          tipo: "tabela",
+          array: contexto.array || "",
+          ataIndex: contexto.ataIndex ?? null,
+          index: contexto.index,
+          headers
+        },
         codigo: idxCodigo >= 0 ? celulas[idxCodigo] : "",
         descricao: idxDescricao >= 0 ? celulas[idxDescricao] : (celulas[1] || celulas[0] || ""),
         unidade: idxUnidade >= 0 ? celulas[idxUnidade] : "",
@@ -9409,15 +9470,22 @@ atualizarEtapasConcluidas();
       const linhas = [];
       (Array.isArray(listaProcessos) ? listaProcessos : []).forEach(processo => {
         (Array.isArray(processo.itensProcesso) ? processo.itensProcesso : []).forEach((item, index) => {
-          linhas.push(itemDeObjeto(item, { processo, origem: "ETP", vinculo: "Itens do processo", index }));
+          linhas.push(itemDeObjeto(item, { processo, origem: "ETP", vinculo: "Itens do processo", array: "itensProcesso", index }));
         });
 
         (Array.isArray(processo.cotItens) ? processo.cotItens : []).forEach((item, index) => {
-          linhas.push(itemDeObjeto(item, { processo, origem: "Cotação", vinculo: "Itens da cotação", index }));
+          linhas.push(itemDeObjeto(item, { processo, origem: "Cotação", vinculo: "Itens da cotação", array: "cotItens", index }));
         });
 
         linhasResultadoProcesso(processo).forEach((item, index) => {
-          linhas.push(itemDeObjeto(item, { processo, origem: "Resultado", vinculo: "Resultado/Homologação", index }));
+          linhas.push(itemDeObjeto(item, {
+            processo,
+            origem: "Resultado",
+            vinculo: item.divisaoIndex === null || item.divisaoIndex === undefined ? "Resultado/Homologação" : `Resultado dividido ${item.itemNumero || ""}`.trim(),
+            array: "resultadoItens",
+            index: item.itemIndex ?? index,
+            divisaoIndex: item.divisaoIndex ?? null
+          }));
         });
 
         (Array.isArray(processo.atasRegistroPreco) ? processo.atasRegistroPreco : []).forEach((ata, ataIndex) => {
@@ -9427,11 +9495,21 @@ atualizarEtapasConcluidas();
             origem: "Ata",
             vinculo: `Ata ${ata.numero || ""}/${ata.ano || ""}`.trim(),
             fornecedor,
+            array: "atasRegistroPreco",
+            ataIndex,
             index: ataIndex
           }));
         });
       });
-      return linhas.filter(item => item.descricao || item.codigo);
+      const avulsos = produtosAvulsos.map((item, index) => itemDeObjeto(item, {
+        processo: null,
+        origem: "Avulso",
+        vinculo: "Cadastro de produtos",
+        tipo: "avulso",
+        array: "produtosAvulsos",
+        index
+      }));
+      return [...linhas, ...avulsos].filter(item => item.descricao || item.codigo);
     }
 
     function produtosFiltrados() {
@@ -9485,6 +9563,146 @@ atualizarEtapasConcluidas();
       dlg.showModal();
     }
 
+    function abrirProdutoForm(produto = null) {
+      produtoEmEdicao = produto || null;
+      const dlg = container.querySelector('#produto_form_dlg');
+      const titulo = container.querySelector('#produto_form_titulo');
+      const origemInfo = container.querySelector('#produto_form_origem');
+      titulo.textContent = produto ? "Editar Produto" : "Novo Produto";
+      origemInfo.textContent = produto
+        ? `${produto.origem || "Produto"}${produto.processo?.numero ? ` - Processo ${produto.processo.numero}` : ""}${produto.vinculo ? ` - ${produto.vinculo}` : ""}`
+        : "Cadastro avulso de produto";
+      container.querySelector('#produto_form_codigo').value = formatCodigoProduto(produto?.codigo || "");
+      container.querySelector('#produto_form_descricao').value = produto?.descricao || "";
+      container.querySelector('#produto_form_unidade').value = produto?.unidade || "";
+      container.querySelector('#produto_form_quantidade').value = produto?.quantidade || "";
+      container.querySelector('#produto_form_valor_unitario').value = textoValor(produto?.valorUnitario || "");
+      container.querySelector('#produto_form_valor_total').value = produto?.valorTotal || "";
+      container.querySelector('#produto_form_situacao').value = produto?.situacao || "";
+      container.querySelector('#produto_form_fornecedor').value = produto?.fornecedor || "";
+      dlg.showModal();
+    }
+
+    function atualizarCampoObjeto(item, dados) {
+      if (!item) return;
+      item.codigo = dados.codigo;
+      item.descricao = dados.descricao;
+      item.unidade = dados.unidade;
+      item.quantidade = dados.quantidade;
+      item.valorUnitario = dados.valorUnitario;
+      item.valorTotal = parseBRLToNumber(dados.valorTotal) || parseBRLToNumber(calcularTotal(dados.quantidade, dados.valorUnitario, "")) || 0;
+      item.situacao = dados.situacao;
+      item.fornecedor = dados.fornecedor;
+      if (dados.fornecedor && !item.razaoSocial) item.razaoSocial = dados.fornecedor;
+    }
+
+    function indicesTabelaProduto(headers) {
+      const cabecalho = Array.isArray(headers) ? headers.map(normalizar) : [];
+      const achar = (...termos) => cabecalho.findIndex(coluna => termos.some(termo => coluna.includes(normalizar(termo))));
+      return {
+        codigo: achar("codigo", "código"),
+        descricao: achar("descricao", "descrição", "produto", "servico", "serviço", "objeto"),
+        unidade: achar("unidade", "medida"),
+        quantidade: achar("quantidade", "qtd"),
+        valorUnitario: achar("unitario", "unitário", "valor unit"),
+        valorTotal: achar("total")
+      };
+    }
+
+    function atualizarLinhaTabelaProduto(produto, dados) {
+      const ata = produto?.processo?.atasRegistroPreco?.[produto.source?.ataIndex];
+      const linhas = Array.isArray(ata?.itens) ? ata.itens : [];
+      const row = linhas[(produto.source?.index ?? 0) + 1];
+      if (!Array.isArray(row)) return false;
+      const indices = indicesTabelaProduto(produto.source?.headers || linhas[0] || []);
+      const fallback = { codigo: 0, descricao: 1, unidade: 2, quantidade: 3, valorUnitario: 4, valorTotal: 5 };
+      Object.entries(fallback).forEach(([campo, idxPadrao]) => {
+        const idx = indices[campo] >= 0 ? indices[campo] : idxPadrao;
+        while (row.length <= idx) row.push("");
+        row[idx] = dados[campo] || "";
+      });
+      return true;
+    }
+
+    async function salvarProdutoForm(event) {
+      event.preventDefault();
+      const salvarBtn = container.querySelector('#produto_form_save');
+      const dados = {
+        codigo: formatCodigoProduto(container.querySelector('#produto_form_codigo').value),
+        descricao: container.querySelector('#produto_form_descricao').value.trim(),
+        unidade: container.querySelector('#produto_form_unidade').value.trim(),
+        quantidade: container.querySelector('#produto_form_quantidade').value.trim(),
+        valorUnitario: container.querySelector('#produto_form_valor_unitario').value.trim(),
+        valorTotal: container.querySelector('#produto_form_valor_total').value.trim(),
+        situacao: container.querySelector('#produto_form_situacao').value.trim(),
+        fornecedor: container.querySelector('#produto_form_fornecedor').value.trim()
+      };
+      if (!dados.descricao) return alert("Informe a descrição do produto.");
+
+      salvarBtn.disabled = true;
+      salvarBtn.textContent = "Salvando...";
+      try {
+        if (!produtoEmEdicao) {
+          const novo = {
+            id: genId(),
+            ...dados,
+            criadoEm: new Date().toLocaleString('pt-BR'),
+            atualizadoEm: new Date().toLocaleString('pt-BR')
+          };
+          await salvarProdutosAvulsos([novo, ...produtosAvulsos]);
+          showToast("Produto cadastrado.");
+        } else if (produtoEmEdicao.source?.tipo === "avulso") {
+          const idx = produtoEmEdicao.source.index;
+          produtosAvulsos[idx] = {
+            ...(produtosAvulsos[idx] || {}),
+            ...dados,
+            id: produtosAvulsos[idx]?.id || produtoEmEdicao.itemOriginal?.id || genId(),
+            atualizadoEm: new Date().toLocaleString('pt-BR')
+          };
+          await salvarProdutosAvulsos(produtosAvulsos);
+          showToast("Produto atualizado.");
+        } else if (produtoEmEdicao.source?.tipo === "tabela") {
+          if (!atualizarLinhaTabelaProduto(produtoEmEdicao, dados)) throw new Error("Não foi possível localizar a linha original do produto.");
+          await salvarProcessoComProduto(produtoEmEdicao.processo);
+          showToast("Produto atualizado no processo.");
+        } else {
+          const source = produtoEmEdicao.source || {};
+          const processo = produtoEmEdicao.processo;
+          const base = processo?.[source.array]?.[source.index];
+          if (!base) throw new Error("Não foi possível localizar o item original no processo.");
+          if (source.array === "resultadoItens" && source.divisaoIndex !== null && source.divisaoIndex !== undefined) {
+            base.codigo = dados.codigo;
+            base.descricao = dados.descricao;
+            base.unidade = dados.unidade;
+            const divisao = base.divisoesResultado?.[source.divisaoIndex];
+            if (divisao) {
+              divisao.quantidade = dados.quantidade;
+              divisao.valorUnitario = dados.valorUnitario;
+              divisao.valorTotal = parseBRLToNumber(dados.valorTotal) || parseBRLToNumber(calcularTotal(dados.quantidade, dados.valorUnitario, "")) || 0;
+              divisao.situacao = dados.situacao;
+              divisao.fornecedor = dados.fornecedor;
+              if (dados.fornecedor && !divisao.razaoSocial) divisao.razaoSocial = dados.fornecedor;
+            }
+          } else {
+            atualizarCampoObjeto(base, dados);
+          }
+          await salvarProcessoComProduto(processo);
+          showToast("Produto atualizado no processo.");
+        }
+
+        container.querySelector('#produto_form_dlg').close();
+        produtosAvulsos = await carregarProdutosAvulsos();
+        produtos = montarProdutos(processos);
+        render();
+      } catch (error) {
+        console.error('[PRODUTOS][SALVAR][ERRO]', error);
+        alert('Não foi possível salvar o produto.\n\nDetalhe: ' + (error?.message || error));
+      } finally {
+        salvarBtn.disabled = false;
+        salvarBtn.textContent = "Salvar";
+      }
+    }
+
     function opcoes(lista) {
       return [...new Set(lista.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
     }
@@ -9503,7 +9721,10 @@ atualizarEtapasConcluidas();
               <h2 style="margin:0 0 6px 0">Produtos</h2>
               <div class="muted">Itens consolidados a partir dos processos cadastrados.</div>
             </div>
-            <button type="button" class="btn" id="produtos_reload">Atualizar produtos</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+              <button type="button" class="btn" id="produtos_reload">Atualizar produtos</button>
+              <button type="button" class="btn primary" id="produto_new">+ Inserir Produto</button>
+            </div>
           </header>
 
           <div class="produtos-summary">
@@ -9567,7 +9788,12 @@ atualizarEtapasConcluidas();
                         <td><span class="produto-origem">${esc(item.origem || "")}</span></td>
                         <td><strong>${esc(item.processo?.numero || "")}</strong><br><span class="muted">${esc(item.vinculo || "")}</span></td>
                         <td>${esc(item.fornecedor || item.pessoaVinculada || "")}</td>
-                        <td><button type="button" class="btn" data-produto-detalhe="${esc(item.id)}">Vínculos</button></td>
+                        <td>
+                          <div class="produtos-actions">
+                            <button type="button" class="btn" data-produto-detalhe="${esc(item.id)}">Vínculos</button>
+                            <button type="button" class="btn" data-produto-editar="${esc(item.id)}">Editar</button>
+                          </div>
+                        </td>
                       </tr>
                     `).join("")}
                   </tbody>
@@ -9582,6 +9808,58 @@ atualizarEtapasConcluidas();
               <button type="button" class="btn ghost" id="produto_dlg_close">Fechar</button>
             </div>
             <div class="modal-body" id="produto_dlg_body"></div>
+          </dialog>
+
+          <dialog id="produto_form_dlg" class="produto-form-dialog">
+            <form id="produto_form">
+              <div class="modal-head">
+                <div>
+                  <strong id="produto_form_titulo">Produto</strong>
+                  <div class="muted" id="produto_form_origem" style="font-size:12px;margin-top:3px"></div>
+                </div>
+                <button type="button" class="btn ghost" id="produto_form_close">Fechar</button>
+              </div>
+              <div class="modal-body">
+                <div class="produto-form-grid">
+                  <div class="field">
+                    <label>Código</label>
+                    <input id="produto_form_codigo" class="input" placeholder="000.000.000" inputmode="numeric">
+                  </div>
+                  <div class="field">
+                    <label>Unidade</label>
+                    <input id="produto_form_unidade" class="input" placeholder="UN">
+                  </div>
+                  <div class="field produto-col-span">
+                    <label>Descrição do Produto/Serviço</label>
+                    <textarea id="produto_form_descricao" class="input" rows="3" required></textarea>
+                  </div>
+                  <div class="field">
+                    <label>Quantidade</label>
+                    <input id="produto_form_quantidade" class="input" placeholder="Ex: 12">
+                  </div>
+                  <div class="field">
+                    <label>Valor Unitário</label>
+                    <input id="produto_form_valor_unitario" class="input" placeholder="0,00">
+                  </div>
+                  <div class="field">
+                    <label>Valor Total</label>
+                    <input id="produto_form_valor_total" class="input" placeholder="0,00">
+                  </div>
+                  <div class="field">
+                    <label>Situação</label>
+                    <input id="produto_form_situacao" class="input" placeholder="Ex: ACEITO">
+                  </div>
+                  <div class="field produto-col-span">
+                    <label>Fornecedor</label>
+                    <input id="produto_form_fornecedor" class="input" placeholder="Razão social ou nome do fornecedor">
+                  </div>
+                </div>
+              </div>
+              <div class="modal-foot">
+                <button type="button" class="btn" id="produto_form_cancel">Cancelar</button>
+                <button type="submit" class="btn primary" id="produto_form_save">Salvar</button>
+              </div>
+            </form>
           </dialog>
         </section>
       `;
@@ -9599,9 +9877,20 @@ atualizarEtapasConcluidas();
         render();
       });
       container.querySelector('#produtos_reload').onclick = carregar;
+      container.querySelector('#produto_new').onclick = () => abrirProdutoForm();
       container.querySelector('#produto_dlg_close').onclick = () => container.querySelector('#produto_dlg').close();
+      container.querySelector('#produto_form_close').onclick = () => container.querySelector('#produto_form_dlg').close();
+      container.querySelector('#produto_form_cancel').onclick = () => container.querySelector('#produto_form_dlg').close();
+      container.querySelector('#produto_form').addEventListener('submit', salvarProdutoForm);
+      const codigoInput = container.querySelector('#produto_form_codigo');
+      codigoInput.addEventListener('input', () => {
+        codigoInput.value = formatCodigoProduto(codigoInput.value);
+      });
       container.querySelectorAll('[data-produto-detalhe]').forEach(btn => {
         btn.onclick = () => abrirDetalhesProduto(btn.dataset.produtoDetalhe);
+      });
+      container.querySelectorAll('[data-produto-editar]').forEach(btn => {
+        btn.onclick = () => abrirProdutoForm(produtos.find(row => row.id === btn.dataset.produtoEditar));
       });
     }
 
@@ -9618,7 +9907,10 @@ atualizarEtapasConcluidas();
         </section>
       `;
       try {
-        processos = await carregarProcessosLicitatoriosFonte({ silencioso: true });
+        [processos, produtosAvulsos] = await Promise.all([
+          carregarProcessosLicitatoriosFonte({ silencioso: true }),
+          carregarProdutosAvulsos()
+        ]);
         produtos = montarProdutos(processos);
         render();
       } catch (error) {

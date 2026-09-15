@@ -705,6 +705,12 @@ dialog {
   min-width: 300px;
 }
 
+.produtos-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .produto-origem {
   display: inline-flex;
   align-items: center;
@@ -735,6 +741,25 @@ dialog {
   display: block;
   margin-top: 5px;
   overflow-wrap: anywhere;
+}
+
+.produto-form-dialog {
+  width: min(820px, 96vw);
+}
+
+.produto-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.produto-col-span {
+  grid-column: 1 / -1;
+}
+
+.produto-form-grid textarea.input {
+  min-height: 84px;
+  resize: vertical;
 }
 
 /* Página e editor de IRP */
@@ -1349,7 +1374,8 @@ dialog {
   }
   .produtos-summary,
   .produtos-filter-card,
-  .produto-detail-grid {
+  .produto-detail-grid,
+  .produto-form-grid {
     grid-template-columns: 1fr;
   }
   .irp-page-head {
