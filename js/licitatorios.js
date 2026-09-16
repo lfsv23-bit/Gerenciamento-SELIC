@@ -1492,6 +1492,19 @@
       return s.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     }
   }
+  function formatBRLDisplayPrecise(value, maxFractionDigits = 5) {
+    if (value === '' || value === null || value === undefined || Number.isNaN(Number(value))) return '';
+    const num = Number(value);
+    const maximumFractionDigits = Math.max(2, Math.min(maxFractionDigits, 8));
+    try {
+      return new Intl.NumberFormat('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits
+      }).format(num);
+    } catch (e) {
+      return formatBRLDisplay(num);
+    }
+  }
   function parseBRLToNumber(str) {
     if (str === null || str === undefined) return null;
     const s = String(str).trim();
@@ -1518,7 +1531,11 @@
 
   function normalizarValorImportado(value) {
     const numero = parseBRLToNumber(value);
-    return numero === null ? String(value || '').trim() : formatBRLDisplay(numero);
+    if (numero === null) return String(value || '').trim();
+    const texto = String(value || '').trim();
+    const decimal = texto.match(/[,.](\d+)$/);
+    const casas = decimal ? decimal[1].length : 2;
+    return formatBRLDisplayPrecise(numero, Math.max(2, casas));
   }
 
   function normalizarQuantidadeImportada(value) {
@@ -6050,18 +6067,21 @@ function novoItemCotacao(base = {}) {
 }
 
 function formatarValorCotacaoInput(input) {
-  let value = input.value.replace(/\D/g, '');
-  if (value === "") {
-    input.value = "";
-    calcularCotacaoItens();
+  input.value = input.value
+    .replace(/[^\d,.-]/g, '')
+    .replace(/(?!^)-/g, '');
+  calcularCotacaoItens();
+}
+
+function formatarValorCotacaoBlur(input) {
+  const numero = parseBRLToNumber(input.value);
+  if (numero === null) {
+    input.value = input.value.trim();
     return;
   }
-  const number = parseFloat(value) / 100;
-  input.value = number.toLocaleString('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-  calcularCotacaoItens();
+  const decimal = String(input.value || '').trim().match(/[,.](\d+)$/);
+  const casas = decimal ? decimal[1].length : 2;
+  input.value = formatBRLDisplayPrecise(numero, Math.max(2, casas));
 }
 
 function calcularResultadoValores(valores, tipo) {
@@ -6081,7 +6101,7 @@ function calcularCotacaoItens() {
   let totalGeral = 0;
   cotItens.forEach(item => {
     const resultadoCalculado = calcularResultadoValores((item.pesquisas || []).map(p => p.valor), tipo);
-    const resultadoUnitario = Math.round((resultadoCalculado + Number.EPSILON) * 100) / 100;
+    const resultadoUnitario = resultadoCalculado;
     const quantidade = parseBRLToNumber(item.quantidade) || 0;
     item.resultadoUnitario = resultadoUnitario;
     item.resultadoTotal = Math.round(((resultadoUnitario * quantidade) + Number.EPSILON) * 100) / 100;
@@ -6102,7 +6122,7 @@ function atualizarResumoCotacaoItens() {
     if (!item) return;
     const unitario = card.querySelector('[data-cot-unitario]');
     const total = card.querySelector('[data-cot-total]');
-    if (unitario) unitario.textContent = formatBRLDisplay(item.resultadoUnitario || 0) || "0,00";
+    if (unitario) unitario.textContent = formatBRLDisplayPrecise(item.resultadoUnitario || 0, 5) || "0,00";
     if (total) total.textContent = formatBRLDisplay(item.resultadoTotal || 0) || "0,00";
   });
 }
@@ -6193,6 +6213,18 @@ function ligarEventosCotacaoItens() {
       calcularCotacaoItens();
       atualizarEtapasConcluidas();
     });
+    if (input.classList.contains('cot-valor')) {
+      input.addEventListener('blur', () => {
+        const card = input.closest('[data-cot-item]');
+        const row = input.closest('[data-cot-pesquisa]');
+        const item = cotItens[Number(card?.dataset.cotItem)];
+        const pesquisa = item?.pesquisas?.[Number(row?.dataset.cotPesquisa)];
+        formatarValorCotacaoBlur(input);
+        if (pesquisa) pesquisa.valor = input.value;
+        calcularCotacaoItens();
+        atualizarEtapasConcluidas();
+      });
+    }
   });
   cotItensModalBody.querySelectorAll('[data-cot-remove-pesquisa]').forEach(btn => {
     btn.onclick = () => {
