@@ -693,7 +693,7 @@ dialog {
 }
 
 .produtos-table {
-  min-width: 1180px;
+  min-width: 820px;
 }
 
 .produtos-table th,
@@ -741,6 +741,91 @@ dialog {
   display: block;
   margin-top: 5px;
   overflow-wrap: anywhere;
+}
+
+.produto-vinculo-hero {
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #bfdbfe;
+  border-radius: 12px;
+  background: #f8fbff;
+}
+
+.produto-vinculo-hero span,
+.produto-vinculo-summary span,
+.produto-vinculo-processo-head span,
+.produto-vinculo-fase span {
+  display: block;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.produto-vinculo-hero h3 {
+  margin: 4px 0 4px;
+  font-size: 18px;
+}
+
+.produto-vinculo-hero p {
+  margin: 0;
+  color: #475569;
+}
+
+.produto-vinculo-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.produto-vinculo-summary div,
+.produto-vinculo-fase {
+  padding: 11px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.produto-vinculo-summary strong,
+.produto-vinculo-fase strong,
+.produto-vinculo-processo-head strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.produto-vinculos-list {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.produto-vinculo-processo {
+  padding: 12px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.produto-vinculo-processo-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.produto-vinculo-processo-head small,
+.produto-vinculo-fase small {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+}
+
+.produto-vinculo-fases {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .produto-form-dialog {
@@ -1374,6 +1459,9 @@ dialog {
   }
   .produtos-summary,
   .produtos-filter-card,
+  .produto-vinculo-summary,
+  .produto-vinculo-processo-head,
+  .produto-vinculo-fases,
   .produto-detail-grid,
   .produto-form-grid {
     grid-template-columns: 1fr;

@@ -9539,47 +9539,188 @@ atualizarEtapasConcluidas();
       });
     }
 
-    function renderDetalhesProduto(item) {
+    function chaveProduto(item) {
+      const codigo = formatCodigoProduto(item?.codigo || "");
+      if (codigo) return `COD:${codigo}`;
+      return `SEM:${normalizar(item?.descricao || "")}|${normalizar(item?.unidade || "")}|${item?.id || ""}`;
+    }
+
+    function gruposProdutos() {
+      const mapa = new Map();
+      produtosFiltrados().forEach(item => {
+        const chave = chaveProduto(item);
+        if (!mapa.has(chave)) {
+          mapa.set(chave, {
+            id: `produto-grupo-${mapa.size}`,
+            chave,
+            codigo: formatCodigoProduto(item.codigo || ""),
+            descricao: item.descricao || "",
+            unidade: item.unidade || "",
+            ocorrencias: []
+          });
+        }
+        const grupo = mapa.get(chave);
+        grupo.ocorrencias.push(item);
+        if (!grupo.codigo && item.codigo) grupo.codigo = formatCodigoProduto(item.codigo);
+        if (!grupo.descricao && item.descricao) grupo.descricao = item.descricao;
+        if (!grupo.unidade && item.unidade) grupo.unidade = item.unidade;
+      });
+      return Array.from(mapa.values()).sort((a, b) =>
+        (a.descricao || a.codigo || "").localeCompare(b.descricao || b.codigo || "", "pt-BR")
+      );
+    }
+
+    function somaNumeros(lista) {
+      return lista.reduce((total, value) => total + (parseBRLToNumber(value) || 0), 0);
+    }
+
+    function resumoGrupoProduto(grupo) {
+      const homologados = grupo.ocorrencias.filter(item => item.origem === "Resultado" && normalizar(item.situacao || "") !== "DESERTO");
+      const totaisHomologados = homologados.map(item => parseBRLToNumber(item.valorTotal)).filter(value => value !== null);
+      const unitariosHomologados = homologados.map(item => parseBRLToNumber(item.valorUnitario)).filter(value => value !== null);
+      const quantidadeTotal = somaNumeros(homologados.map(item => item.quantidade));
+      const valorTotal = totaisHomologados.reduce((total, value) => total + value, 0);
+      const media = unitariosHomologados.length
+        ? unitariosHomologados.reduce((total, value) => total + value, 0) / unitariosHomologados.length
+        : null;
+      return {
+        processos: new Set(grupo.ocorrencias.map(item => item.processo?.id || item.processo?.numero).filter(Boolean)).size,
+        quantidadeTotal,
+        valorTotal,
+        media
+      };
+    }
+
+    function textoValorOuNaoInformado(value) {
+      const numero = parseBRLToNumber(value);
+      return numero === null ? "Valor não informado" : `R$ ${formatBRLDisplay(numero)}`;
+    }
+
+    function textoQuantidadeOuNaoInformado(value) {
+      const numero = parseBRLToNumber(value);
+      if (numero === null) return "Quantidade não informada";
+      return Number.isInteger(numero) ? String(numero) : String(numero).replace(".", ",");
+    }
+
+    function ocorrenciasPorProcesso(grupo) {
+      const mapa = new Map();
+      grupo.ocorrencias.forEach(item => {
+        const chave = item.processo?.id || item.processo?.numero || "avulso";
+        if (!mapa.has(chave)) {
+          mapa.set(chave, {
+            processo: item.processo,
+            ocorrencias: []
+          });
+        }
+        mapa.get(chave).ocorrencias.push(item);
+      });
+      return Array.from(mapa.values());
+    }
+
+    function primeiraOcorrenciaDaFase(registro, fase) {
+      return registro.ocorrencias.find(item => item.origem === fase) || null;
+    }
+
+    function renderFaseProduto(registro, fase, titulo) {
+      const item = primeiraOcorrenciaDaFase(registro, fase);
+      if (!item) {
+        return `
+          <div class="produto-vinculo-fase">
+            <span>${esc(titulo)}</span>
+            <strong>Valor não informado</strong>
+            <small>Quantidade não informada</small>
+          </div>
+        `;
+      }
       return `
-        <div class="produto-detail-grid">
-          <div><span>Produto/Serviço</span><strong>${esc(item.descricao || "")}</strong></div>
-          <div><span>Código</span><strong>${esc(item.codigo || "Não informado")}</strong></div>
-          <div><span>Origem</span><strong>${esc(item.origem || "")}</strong></div>
-          <div><span>Vínculo</span><strong>${esc(item.vinculo || "")}</strong></div>
-          <div><span>Processo</span><strong>${esc(item.processo?.numero || "")}</strong></div>
-          <div><span>Objeto do Processo</span><strong>${esc(item.processo?.objeto || "")}</strong></div>
-          <div><span>Secretaria</span><strong>${esc(item.processo?.secretaria || "")}</strong></div>
-          <div><span>Fornecedor/Pessoa</span><strong>${esc([item.fornecedor, item.pessoaVinculada, item.tipoVinculo].filter(Boolean).join(" | ") || "Não informado")}</strong></div>
+        <div class="produto-vinculo-fase">
+          <span>${esc(titulo)}</span>
+          <strong>${esc(textoValorOuNaoInformado(item.valorTotal || calcularTotal(item.quantidade, item.valorUnitario, "")))}</strong>
+          <small>Qtd.: ${esc(textoQuantidadeOuNaoInformado(item.quantidade))}${item.valorUnitario ? ` | Unit.: R$ ${esc(textoValor(item.valorUnitario))}` : ""}</small>
         </div>
       `;
     }
 
-    function abrirDetalhesProduto(produtoId) {
-      const item = produtos.find(row => row.id === produtoId);
-      if (!item) return;
+    function renderDetalhesProduto(grupo) {
+      const resumo = resumoGrupoProduto(grupo);
+      return `
+        <div class="produto-vinculo-hero">
+          <div>
+            <span>PRODUTO</span>
+            <h3>${esc(grupo.descricao || "Produto sem descrição")}</h3>
+            <p>${esc(grupo.codigo || "Código não informado")} ${grupo.unidade ? `| ${esc(grupo.unidade)}` : ""}</p>
+          </div>
+        </div>
+        <div class="produto-vinculo-summary">
+          <div><span>Processos vinculados</span><strong>${resumo.processos}</strong></div>
+          <div><span>Quantidade homologada</span><strong>${resumo.quantidadeTotal ? esc(textoQuantidadeOuNaoInformado(resumo.quantidadeTotal)) : "0"}</strong></div>
+          <div><span>Total homologado/gasto</span><strong>${resumo.valorTotal ? `R$ ${esc(formatBRLDisplay(resumo.valorTotal))}` : "R$ 0,00"}</strong></div>
+          <div><span>Média unitária homologada</span><strong>${resumo.media !== null ? `R$ ${esc(formatBRLDisplay(resumo.media))}` : "Valor não informado"}</strong></div>
+        </div>
+        <div class="produto-vinculos-list">
+          ${ocorrenciasPorProcesso(grupo).map(registro => {
+            const totalQtdProcesso = somaNumeros(registro.ocorrencias.filter(item => item.origem === "Resultado").map(item => item.quantidade));
+            const totalValorProcesso = somaNumeros(registro.ocorrencias.filter(item => item.origem === "Resultado").map(item => item.valorTotal));
+            return `
+              <section class="produto-vinculo-processo">
+                <div class="produto-vinculo-processo-head">
+                  <div>
+                    <strong>${esc(registro.processo?.numero || "Produto avulso")}</strong>
+                    <span>${esc(registro.processo?.objeto || "Cadastro sem processo vinculado")}</span>
+                  </div>
+                  <div>
+                    <span>Total no resultado</span>
+                    <strong>${totalValorProcesso ? `R$ ${esc(formatBRLDisplay(totalValorProcesso))}` : "Valor não informado"}</strong>
+                    <small>Qtd.: ${totalQtdProcesso ? esc(textoQuantidadeOuNaoInformado(totalQtdProcesso)) : "Quantidade não informada"}</small>
+                  </div>
+                </div>
+                <div class="produto-vinculo-fases">
+                  ${renderFaseProduto(registro, "ETP", "ETP")}
+                  ${renderFaseProduto(registro, "Cotação", "Cotação")}
+                  ${renderFaseProduto(registro, "Resultado", "Resultado/Homologação")}
+                  ${renderFaseProduto(registro, "Ata", "Ata")}
+                </div>
+              </section>
+            `;
+          }).join("")}
+        </div>
+        <div class="produto-detail-grid">
+          <div><span>Ocorrências encontradas</span><strong>${grupo.ocorrencias.length}</strong></div>
+          <div><span>Unidade padrão exibida</span><strong>${esc(grupo.unidade || "Não informada")}</strong></div>
+        </div>
+      `;
+    }
+
+    function abrirDetalhesProduto(grupoId) {
+      const grupo = gruposProdutos().find(row => row.id === grupoId);
+      if (!grupo) return;
       const dlg = container.querySelector('#produto_dlg');
       const body = container.querySelector('#produto_dlg_body');
-      body.innerHTML = renderDetalhesProduto(item);
+      body.innerHTML = renderDetalhesProduto(grupo);
       dlg.showModal();
     }
 
     function abrirProdutoForm(produto = null) {
       produtoEmEdicao = produto || null;
+      const isGrupo = Array.isArray(produto?.ocorrencias);
+      const baseProduto = isGrupo ? produto.ocorrencias[0] : produto;
       const dlg = container.querySelector('#produto_form_dlg');
       const titulo = container.querySelector('#produto_form_titulo');
       const origemInfo = container.querySelector('#produto_form_origem');
       titulo.textContent = produto ? "Editar Produto" : "Novo Produto";
-      origemInfo.textContent = produto
+      origemInfo.textContent = isGrupo
+        ? `${produto.ocorrencias.length} vínculo(s). A edição altera código, descrição e unidade do grupo.`
+        : produto
         ? `${produto.origem || "Produto"}${produto.processo?.numero ? ` - Processo ${produto.processo.numero}` : ""}${produto.vinculo ? ` - ${produto.vinculo}` : ""}`
         : "Cadastro avulso de produto";
-      container.querySelector('#produto_form_codigo').value = formatCodigoProduto(produto?.codigo || "");
-      container.querySelector('#produto_form_descricao').value = produto?.descricao || "";
-      container.querySelector('#produto_form_unidade').value = produto?.unidade || "";
-      container.querySelector('#produto_form_quantidade').value = produto?.quantidade || "";
-      container.querySelector('#produto_form_valor_unitario').value = textoValor(produto?.valorUnitario || "");
-      container.querySelector('#produto_form_valor_total').value = produto?.valorTotal || "";
-      container.querySelector('#produto_form_situacao').value = produto?.situacao || "";
-      container.querySelector('#produto_form_fornecedor').value = produto?.fornecedor || "";
+      container.querySelector('#produto_form_codigo').value = formatCodigoProduto(baseProduto?.codigo || produto?.codigo || "");
+      container.querySelector('#produto_form_descricao').value = baseProduto?.descricao || produto?.descricao || "";
+      container.querySelector('#produto_form_unidade').value = baseProduto?.unidade || produto?.unidade || "";
+      container.querySelector('#produto_form_quantidade').value = isGrupo ? "" : (baseProduto?.quantidade || "");
+      container.querySelector('#produto_form_valor_unitario').value = isGrupo ? "" : textoValor(baseProduto?.valorUnitario || "");
+      container.querySelector('#produto_form_valor_total').value = isGrupo ? "" : (baseProduto?.valorTotal || "");
+      container.querySelector('#produto_form_situacao').value = isGrupo ? "" : (baseProduto?.situacao || "");
+      container.querySelector('#produto_form_fornecedor').value = isGrupo ? "" : (baseProduto?.fornecedor || "");
       dlg.showModal();
     }
 
@@ -9624,6 +9765,37 @@ atualizarEtapasConcluidas();
       return true;
     }
 
+    function aplicarIdentidadeNaOcorrencia(produto, dados) {
+      const source = produto.source || {};
+      if (source.tipo === "avulso") {
+        const idx = source.index;
+        produtosAvulsos[idx] = {
+          ...(produtosAvulsos[idx] || {}),
+          codigo: dados.codigo,
+          descricao: dados.descricao,
+          unidade: dados.unidade,
+          atualizadoEm: new Date().toLocaleString('pt-BR')
+        };
+        return null;
+      }
+      if (source.tipo === "tabela") {
+        atualizarLinhaTabelaProduto(produto, {
+          ...produto,
+          codigo: dados.codigo,
+          descricao: dados.descricao,
+          unidade: dados.unidade
+        });
+        return produto.processo || null;
+      }
+      const processo = produto.processo;
+      const base = processo?.[source.array]?.[source.index];
+      if (!base) return null;
+      base.codigo = dados.codigo;
+      base.descricao = dados.descricao;
+      base.unidade = dados.unidade;
+      return processo;
+    }
+
     async function salvarProdutoForm(event) {
       event.preventDefault();
       const salvarBtn = container.querySelector('#produto_form_save');
@@ -9651,6 +9823,21 @@ atualizarEtapasConcluidas();
           };
           await salvarProdutosAvulsos([novo, ...produtosAvulsos]);
           showToast("Produto cadastrado.");
+        } else if (Array.isArray(produtoEmEdicao.ocorrencias)) {
+          const processosAlterados = new Map();
+          let alterouAvulsos = false;
+          produtoEmEdicao.ocorrencias.forEach(ocorrencia => {
+            const processoAlterado = aplicarIdentidadeNaOcorrencia(ocorrencia, dados);
+            if (processoAlterado) {
+              processosAlterados.set(processoAlterado.id || processoAlterado.numero, processoAlterado);
+            }
+            if (ocorrencia.source?.tipo === "avulso") alterouAvulsos = true;
+          });
+          for (const processo of processosAlterados.values()) {
+            await salvarProcessoComProduto(processo);
+          }
+          if (alterouAvulsos) await salvarProdutosAvulsos(produtosAvulsos);
+          showToast("Produto atualizado em todos os vínculos do grupo.");
         } else if (produtoEmEdicao.source?.tipo === "avulso") {
           const idx = produtoEmEdicao.source.index;
           produtosAvulsos[idx] = {
@@ -9708,10 +9895,10 @@ atualizarEtapasConcluidas();
     }
 
     function render() {
-      const filtrados = produtosFiltrados();
+      const filtrados = gruposProdutos();
       const origens = opcoes(produtos.map(item => item.origem));
       const secretarias = opcoes(produtos.map(item => item.processo?.secretaria));
-      const produtosUnicos = new Set(produtos.map(item => normalizar(`${item.codigo}|${item.descricao}|${item.unidade}`)).filter(Boolean)).size;
+      const produtosUnicos = gruposProdutos().length;
       const processosComProdutos = new Set(produtos.map(item => item.processo?.id || item.processo?.numero).filter(Boolean)).size;
 
       container.innerHTML = `
@@ -9757,7 +9944,7 @@ atualizarEtapasConcluidas();
           <div class="card">
             <div class="produtos-list-head">
               <strong>${filtrados.length} produto(s) encontrado(s)</strong>
-              <span class="muted">Fonte: processos, cotações, resultados e atas vinculadas.</span>
+              <span class="muted">Produtos agrupados por código. Os detalhes ficam em Vínculos.</span>
             </div>
             ${filtrados.length ? `
               <div class="produtos-table-wrap">
@@ -9766,36 +9953,32 @@ atualizarEtapasConcluidas();
                     <tr>
                       <th>Produto/Serviço</th>
                       <th>Código</th>
-                      <th>Unidade</th>
-                      <th>Qtd.</th>
-                      <th>Valor Unit.</th>
-                      <th>Valor Total</th>
-                      <th>Origem</th>
-                      <th>Processo/Vínculo</th>
-                      <th>Fornecedor</th>
+                      <th>Unidade de medida</th>
+                      <th>Vínculos</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
                   <tbody>
-                    ${filtrados.map(item => `
+                    ${filtrados.map(grupo => {
+                      const resumo = resumoGrupoProduto(grupo);
+                      return `
                       <tr>
-                        <td><strong>${esc(item.descricao || "")}</strong><br><span class="muted">${esc(item.processo?.objeto || "")}</span></td>
-                        <td>${esc(item.codigo || "")}</td>
-                        <td>${esc(item.unidade || "")}</td>
-                        <td>${esc(item.quantidade || "")}</td>
-                        <td>${esc(textoValor(item.valorUnitario))}</td>
-                        <td>${esc(item.valorTotal || "")}</td>
-                        <td><span class="produto-origem">${esc(item.origem || "")}</span></td>
-                        <td><strong>${esc(item.processo?.numero || "")}</strong><br><span class="muted">${esc(item.vinculo || "")}</span></td>
-                        <td>${esc(item.fornecedor || item.pessoaVinculada || "")}</td>
+                        <td><strong>${esc(grupo.descricao || "")}</strong><br><span class="muted">${grupo.ocorrencias.length} ocorrência(s) encontrada(s)</span></td>
+                        <td>${esc(grupo.codigo || "Sem código")}</td>
+                        <td>${esc(grupo.unidade || "")}</td>
+                        <td>
+                          <span class="produto-origem">${resumo.processos} processo(s)</span>
+                          <div class="muted" style="margin-top:5px">Qtd. homologada: ${resumo.quantidadeTotal ? esc(textoQuantidadeOuNaoInformado(resumo.quantidadeTotal)) : "0"}</div>
+                        </td>
                         <td>
                           <div class="produtos-actions">
-                            <button type="button" class="btn" data-produto-detalhe="${esc(item.id)}">Vínculos</button>
-                            <button type="button" class="btn" data-produto-editar="${esc(item.id)}">Editar</button>
+                            <button type="button" class="btn" data-produto-detalhe="${esc(grupo.id)}">Vínculos</button>
+                            <button type="button" class="btn" data-produto-editar="${esc(grupo.id)}">Editar</button>
                           </div>
                         </td>
                       </tr>
-                    `).join("")}
+                    `;
+                    }).join("")}
                   </tbody>
                 </table>
               </div>
@@ -9890,7 +10073,10 @@ atualizarEtapasConcluidas();
         btn.onclick = () => abrirDetalhesProduto(btn.dataset.produtoDetalhe);
       });
       container.querySelectorAll('[data-produto-editar]').forEach(btn => {
-        btn.onclick = () => abrirProdutoForm(produtos.find(row => row.id === btn.dataset.produtoEditar));
+        btn.onclick = () => {
+          const grupo = gruposProdutos().find(row => row.id === btn.dataset.produtoEditar);
+          abrirProdutoForm(grupo || null);
+        };
       });
     }
 
