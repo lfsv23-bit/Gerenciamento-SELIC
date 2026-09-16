@@ -9293,10 +9293,14 @@ atualizarEtapasConcluidas();
     let produtos = [];
     let produtosAvulsos = [];
     let filtro = "";
+    let filtroDigitado = "";
     let filtroOrigem = "";
     let filtroSecretaria = "";
+    let produtosPagina = 1;
+    let produtosBuscaTimer = null;
     let produtoEmEdicao = null;
     const PRODUTOS_AVULSOS_KEY = "produtosAvulsosCadastro";
+    const PRODUTOS_POR_PAGINA = 25;
 
     const esc = (value) => String(value || "")
       .replace(/&/g, "&amp;")
@@ -10153,6 +10157,11 @@ atualizarEtapasConcluidas();
 
     function render() {
       const filtrados = gruposProdutos();
+      const totalPaginas = Math.max(1, Math.ceil(filtrados.length / PRODUTOS_POR_PAGINA));
+      produtosPagina = Math.min(Math.max(1, produtosPagina), totalPaginas);
+      const inicioPagina = (produtosPagina - 1) * PRODUTOS_POR_PAGINA;
+      const fimPagina = inicioPagina + PRODUTOS_POR_PAGINA;
+      const paginaProdutos = filtrados.slice(inicioPagina, fimPagina);
       const origens = opcoes(produtos.map(item => item.origem));
       const secretarias = opcoes(produtos.map(item => item.processo?.secretaria));
       const produtosUnicos = gruposProdutos().length;
@@ -10183,7 +10192,7 @@ atualizarEtapasConcluidas();
           <div class="produtos-filter-card">
             <div class="field">
               <label>Buscar produto</label>
-              <input id="produtos_busca" class="input" placeholder="Buscar por descrição, código, processo, fornecedor, secretaria..." value="${esc(filtro)}">
+              <input id="produtos_busca" class="input" placeholder="Buscar por descrição, código, processo, fornecedor, secretaria..." value="${esc(filtroDigitado || filtro)}" autocomplete="off">
             </div>
             <div class="field">
               <label>Origem</label>
@@ -10204,7 +10213,7 @@ atualizarEtapasConcluidas();
           <div class="card">
             <div class="produtos-list-head">
               <strong>${filtrados.length} produto(s) encontrado(s)</strong>
-              <span class="muted">Produtos agrupados por código. Os detalhes ficam em Vínculos.</span>
+              <span class="muted">Mostrando ${filtrados.length ? `${inicioPagina + 1}-${Math.min(fimPagina, filtrados.length)}` : "0"} de ${filtrados.length}. Produtos agrupados por código.</span>
             </div>
             ${filtrados.length ? `
               <div class="produtos-table-wrap">
@@ -10219,7 +10228,7 @@ atualizarEtapasConcluidas();
                     </tr>
                   </thead>
                   <tbody>
-                    ${filtrados.map(grupo => {
+                    ${paginaProdutos.map(grupo => {
                       const resumo = resumoGrupoProduto(grupo);
                       return `
                       <tr>
@@ -10241,6 +10250,13 @@ atualizarEtapasConcluidas();
                     }).join("")}
                   </tbody>
                 </table>
+              </div>
+              <div class="produtos-pagination">
+                <button type="button" class="btn" data-produtos-page="${produtosPagina - 1}" ${produtosPagina <= 1 ? "disabled" : ""}>Anterior</button>
+                ${Array.from({ length: totalPaginas }, (_, index) => index + 1).map(page => `
+                  <button type="button" class="btn ${page === produtosPagina ? "primary" : ""}" data-produtos-page="${page}">${page}</button>
+                `).join("")}
+                <button type="button" class="btn" data-produtos-page="${produtosPagina + 1}" ${produtosPagina >= totalPaginas ? "disabled" : ""}>Próxima</button>
               </div>
             ` : `<div class="empty">Nenhum produto encontrado nos processos cadastrados.</div>`}
           </div>
@@ -10308,16 +10324,31 @@ atualizarEtapasConcluidas();
       `;
 
       container.querySelector('#produtos_busca').addEventListener('input', event => {
-        filtro = event.target.value;
-        render();
+        filtroDigitado = event.target.value;
+        clearTimeout(produtosBuscaTimer);
+        produtosBuscaTimer = setTimeout(() => {
+          filtro = filtroDigitado;
+          produtosPagina = 1;
+          render();
+        }, 350);
       });
       container.querySelector('#produtos_origem').addEventListener('change', event => {
         filtroOrigem = event.target.value;
+        produtosPagina = 1;
         render();
       });
       container.querySelector('#produtos_secretaria').addEventListener('change', event => {
         filtroSecretaria = event.target.value;
+        produtosPagina = 1;
         render();
+      });
+      container.querySelectorAll('[data-produtos-page]').forEach(btn => {
+        btn.onclick = () => {
+          const page = Number(btn.dataset.produtosPage);
+          if (!Number.isFinite(page) || page < 1 || page > totalPaginas || page === produtosPagina) return;
+          produtosPagina = page;
+          render();
+        };
       });
       container.querySelector('#produtos_reload').onclick = carregar;
       container.querySelector('#produtos_export_backup').onclick = exportarBackupProdutos;

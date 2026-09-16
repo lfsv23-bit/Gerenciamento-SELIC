@@ -719,6 +719,15 @@ dialog {
   flex-wrap: wrap;
 }
 
+.produtos-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 14px 0 0;
+}
+
 .produto-origem {
   display: inline-flex;
   align-items: center;
