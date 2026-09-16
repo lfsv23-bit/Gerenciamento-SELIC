@@ -9422,6 +9422,9 @@ atualizarEtapasConcluidas();
       const quantidade = idxQuantidade >= 0 ? celulas[idxQuantidade] : "";
       const valorUnitario = idxUnitario >= 0 ? celulas[idxUnitario] : "";
       const valorTotal = idxTotal >= 0 ? celulas[idxTotal] : "";
+      const codigoSemCabecalho = idxCodigo < 0 && /^\d{3}\.\d{3}\.\d{3}$/.test(String(celulas[0] || "").trim())
+        ? celulas[0]
+        : "";
       return {
         id: `${contexto.processo?.id || contexto.processo?.numero || "proc"}-${contexto.origem || "tabela"}-${contexto.vinculo || ""}-${contexto.index}`,
         processo: contexto.processo,
@@ -9434,7 +9437,7 @@ atualizarEtapasConcluidas();
           index: contexto.index,
           headers
         },
-        codigo: idxCodigo >= 0 ? celulas[idxCodigo] : "",
+        codigo: idxCodigo >= 0 ? celulas[idxCodigo] : codigoSemCabecalho,
         descricao: idxDescricao >= 0 ? celulas[idxDescricao] : (celulas[1] || celulas[0] || ""),
         unidade: idxUnidade >= 0 ? celulas[idxUnidade] : "",
         quantidade,
@@ -9763,7 +9766,22 @@ atualizarEtapasConcluidas();
       const linhas = Array.isArray(ata?.itens) ? ata.itens : [];
       const row = linhas[(produto.source?.index ?? 0) + 1];
       if (!Array.isArray(row)) return false;
-      const indices = indicesTabelaProduto(produto.source?.headers || linhas[0] || []);
+      let headers = Array.isArray(linhas[0]) ? linhas[0] : [];
+      let indices = indicesTabelaProduto(headers);
+      if (indices.codigo < 0 && dados.codigo) {
+        const insertAt = indices.descricao >= 0 ? indices.descricao : 1;
+        headers.splice(insertAt, 0, "Código");
+        linhas.slice(1).forEach((linha, rowIndex) => {
+          if (!Array.isArray(linha)) return;
+          const primeiroCampoTemCodigo = insertAt === 1 && /^\d{3}\.\d{3}\.\d{3}$/.test(String(linha[0] || "").trim());
+          linha.splice(insertAt, 0, primeiroCampoTemCodigo ? linha[0] : "");
+          if (primeiroCampoTemCodigo && normalizar(headers[0] || "").includes("ITEM")) {
+            linha[0] = String(rowIndex + 1);
+          }
+        });
+        produto.source.headers = headers;
+        indices = indicesTabelaProduto(headers);
+      }
       const fallback = { codigo: 0, descricao: 1, unidade: 2, quantidade: 3, valorUnitario: 4, valorTotal: 5 };
       Object.entries(fallback).forEach(([campo, idxPadrao]) => {
         const idx = indices[campo] >= 0 ? indices[campo] : idxPadrao;
