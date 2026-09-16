@@ -2615,7 +2615,9 @@ Ver Itens
 </div>
 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
 <button type="button" id="btnImportResultadoItens" class="btn">Receber itens cadastrados</button>
+<button type="button" id="btnImportResultadoTxt" class="btn">Importar TXT do Resultado</button>
 <button type="button" id="btnLimparResultadoItens" class="btn">Limpar itens</button>
+<input type="file" id="lic_resultado_txt_file" accept=".txt,text/plain,.tsv" style="display:none">
 </div>
 <div id="resultado_itens_container" style="margin-top:10px"></div>
 </div>
@@ -6058,6 +6060,7 @@ function novoItemCotacao(base = {}) {
     : [novaPesquisaCotacao(), novaPesquisaCotacao(), novaPesquisaCotacao()];
   return {
     id: base.id || genId(),
+    codigo: base.codigo || base.cod || base.codigoProduto || "",
     descricao: base.descricao || "",
     quantidade: base.quantidade || base.qtd || "",
     unidade: base.unidade || "",
@@ -6255,6 +6258,7 @@ function coletarCotacaoItens() {
   calcularCotacaoItens();
   return cotItens.map(item => ({
     id: item.id || genId(),
+    codigo: item.codigo || "",
     descricao: item.descricao || "",
     quantidade: item.quantidade || "",
     unidade: item.unidade || "",
@@ -6267,6 +6271,7 @@ function coletarCotacaoItens() {
 function normalizarItemParaCotacao(item) {
   if (!item) return null;
   return novoItemCotacao({
+    codigo: item.codigo || item.cod || item.codigoProduto || "",
     descricao: item.descricao || item.objeto || item[1] || item[0] || "",
     quantidade: item.quantidade || item.qtd || item.qtde || item[5] || "",
     unidade: item.unidade || item.unidadeMedida || item.un || item[2] || ""
@@ -6278,9 +6283,11 @@ function tabelaParaItensCotacao(rows) {
   const header = rows[0].map(cell => normalizarCadastro(cell));
   const temCabecalho = header.some(cell => /ITEM|DESCRICAO|OBJETO|QTD|QTDE|UNIDADE|UN\.?/.test(cell));
   const idxDesc = header.findIndex(cell => /DESCRICAO|OBJETO/.test(cell));
+  const idxCodigo = header.findIndex(cell => /CODIGO|CÓDIGO|COD/.test(cell));
   const idxQtd = header.findIndex(cell => /QTD|QTDE|QUANTIDADE/.test(cell));
   const idxUn = header.findIndex(cell => /UNIDADE|UN\.?/.test(cell));
   return rows.slice(temCabecalho ? 1 : 0).map(row => novoItemCotacao({
+    codigo: idxCodigo >= 0 ? (row[idxCodigo] || "") : "",
     descricao: row[idxDesc >= 0 ? idxDesc : 1] || row[0] || "",
     quantidade: row[idxQtd >= 0 ? idxQtd : 5] || "",
     unidade: row[idxUn >= 0 ? idxUn : 2] || ""
@@ -6302,6 +6309,7 @@ function parseCotacaoTxt(texto) {
   const cabecalho = temCabecalho ? linhas[0] : [];
   const normalizado = temCabecalho ? header : [];
   const idxDesc = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["DESCRIÇÃO", "DESCRICAO", "PRODUTO", "SERVIÇO", "SERVICO", "OBJETO"]) : 0;
+  const idxCodigo = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["CÓDIGO", "CODIGO", "COD"]) : -1;
   const idxQtd = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["QUANTIDADE", "QTDE", "QTD"]) : 1;
   const idxUnidade = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["UNIDADE", "UN.", "UNID", "MEDIDA"]) : 2;
   const idxMedia = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["MÉDIA UNIT", "MEDIA UNIT", "MÉDIA", "MEDIA"]) : -1;
@@ -6324,6 +6332,7 @@ function parseCotacaoTxt(texto) {
     const media = idxMedia >= 0 ? normalizarValorImportado(row[idxMedia]) : "";
     if (!pesquisas.length && media) pesquisas.push({ fonte: "Média Unit.", valor: media });
     return novoItemCotacao({
+      codigo: idxCodigo >= 0 ? String(row[idxCodigo] || "").trim() : "",
       descricao: String(row[idxDesc >= 0 ? idxDesc : 0] || "").trim(),
       quantidade: normalizarQuantidadeImportada(row[idxQtd >= 0 ? idxQtd : 1]),
       unidade: String(row[idxUnidade >= 0 ? idxUnidade : 2] || "").trim(),
@@ -6453,7 +6462,9 @@ renderCotacaoItens();
 
 const resultadoItensContainer = container.querySelector('#resultado_itens_container');
 const btnImportResultadoItens = container.querySelector('#btnImportResultadoItens');
+const btnImportResultadoTxt = container.querySelector('#btnImportResultadoTxt');
 const btnLimparResultadoItens = container.querySelector('#btnLimparResultadoItens');
+const fileImportResultadoTxt = container.querySelector('#lic_resultado_txt_file');
 const homologacaoItensContainer = container.querySelector('#homologacao_itens_container');
 const homologacaoFiltroSituacao = container.querySelector('#lic_homologacao_filtro_situacao');
 let resultadoItens = [];
@@ -6461,6 +6472,7 @@ let resultadoItens = [];
 function novoItemResultado(base = {}) {
   return {
     id: base.id || base.itemId || genId(),
+    codigo: base.codigo || base.cod || base.codigoProduto || "",
     descricao: base.descricao || base.objeto || base[1] || base[0] || "",
     quantidade: base.quantidade || base.qtd || base.qtde || base[5] || "",
     unidade: base.unidade || base.unidadeMedida || base.un || base[2] || "",
@@ -6522,6 +6534,7 @@ function normalizarItemParaResultado(item) {
   if (!item) return null;
   return novoItemResultado({
     id: item.id || item.itemId || genId(),
+    codigo: item.codigo || item.cod || item.codigoProduto || "",
     descricao: item.descricao || item.objeto || item[1] || item[0] || "",
     quantidade: item.quantidade || item.qtd || item.qtde || item[5] || "",
     unidade: item.unidade || item.unidadeMedida || item.un || item[2] || "",
@@ -6551,19 +6564,174 @@ function obterItensBaseParaResultado() {
   return bases;
 }
 
+function chavesConferenciaResultado(item) {
+  const codigo = String(item?.codigo || '').replace(/\D/g, '');
+  const descricao = normalizarTextoComparacao(item?.descricao || '');
+  const unidade = normalizarTextoComparacao(item?.unidade || '');
+  const chaves = [];
+  if (codigo) chaves.push(`COD:${codigo}`);
+  if (descricao || unidade) chaves.push(`DESC:${descricao}|UN:${unidade}`);
+  return chaves;
+}
+
+function chavePrincipalConferenciaResultado(item) {
+  return chavesConferenciaResultado(item)[0] || `SEMCHAVE:${genId()}`;
+}
+
+function agruparItensParaConferenciaResultado(itens = []) {
+  const grupos = new Map();
+  itens.forEach((item, index) => {
+    const chave = chavePrincipalConferenciaResultado(item);
+    const atual = grupos.get(chave) || {
+      chave,
+      chaves: new Set(),
+      descricao: item.descricao || '',
+      unidade: item.unidade || '',
+      codigo: item.codigo || '',
+      quantidade: 0,
+      indices: []
+    };
+    chavesConferenciaResultado(item).forEach(valor => atual.chaves.add(valor));
+    atual.quantidade += parseBRLToNumber(item.quantidade) || 0;
+    atual.indices.push(index + 1);
+    grupos.set(chave, atual);
+  });
+  return Array.from(grupos.values());
+}
+
+function localizarGrupoConferenciaResultado(grupo, gruposBase) {
+  return gruposBase.find(base => [...grupo.chaves].some(chave => base.chaves.has(chave))) || null;
+}
+
+function validarResultadoContraCotacao(importados) {
+  const baseCotacao = Array.isArray(cotItens) && cotItens.length
+    ? cotItens.map(normalizarItemParaResultado).filter(Boolean)
+    : [];
+  if (!baseCotacao.length) {
+    return {
+      ok: true,
+      avisos: ['Nenhum item de cotação foi encontrado para conferência. A importação seguirá sem comparação automática.']
+    };
+  }
+
+  const gruposBase = agruparItensParaConferenciaResultado(baseCotacao);
+  const gruposImportados = agruparItensParaConferenciaResultado(importados);
+  const avisos = [];
+
+  gruposImportados.forEach(grupo => {
+    const base = localizarGrupoConferenciaResultado(grupo, gruposBase);
+    if (!base) {
+      avisos.push(`Item importado "${grupo.descricao || grupo.codigo || grupo.chave}" não foi encontrado na cotação.`);
+      return;
+    }
+    const descricaoBase = normalizarTextoComparacao(base.descricao);
+    const descricaoImportada = normalizarTextoComparacao(grupo.descricao);
+    const unidadeBase = normalizarTextoComparacao(base.unidade);
+    const unidadeImportada = normalizarTextoComparacao(grupo.unidade);
+    if (descricaoBase && descricaoImportada && descricaoBase !== descricaoImportada) {
+      avisos.push(`Descrição diferente para "${grupo.codigo || grupo.descricao}": cotação "${base.descricao}" x resultado "${grupo.descricao}".`);
+    }
+    if (unidadeBase && unidadeImportada && unidadeBase !== unidadeImportada) {
+      avisos.push(`Unidade diferente para "${grupo.codigo || grupo.descricao}": cotação "${base.unidade}" x resultado "${grupo.unidade}".`);
+    }
+    const diferenca = Math.abs((base.quantidade || 0) - (grupo.quantidade || 0));
+    if (diferenca > 0.0001) {
+      avisos.push(`Quantidade diferente para "${grupo.codigo || grupo.descricao}": cotação ${String(base.quantidade).replace('.', ',')} x resultado ${String(grupo.quantidade).replace('.', ',')}.`);
+    }
+  });
+
+  gruposBase.forEach(base => {
+    const importado = localizarGrupoConferenciaResultado(base, gruposImportados);
+    if (!importado) avisos.push(`Item da cotação "${base.descricao || base.codigo}" não veio no TXT do resultado.`);
+  });
+
+  return { ok: avisos.length === 0, avisos };
+}
+
+function parseResultadoTxt(texto) {
+  const linhas = parseItensEditalTxt(texto);
+  if (!linhas.length) return [];
+  const header = linhas[0].map(cell => normalizarCadastro(cell));
+  const temCabecalho = header.some(cell => /DESCRICAO|DESCRIÇÃO|PRODUTO|SERVICO|SERVIÇO|QTD|QTDE|QUANTIDADE|UNIDADE|CNPJ|FORNECEDOR|PROPONENTE|VALOR|SITUACAO|SITUAÇÃO/.test(cell));
+  const dados = temCabecalho ? linhas.slice(1) : linhas;
+  const cabecalho = temCabecalho ? linhas[0] : [];
+
+  const idxCodigo = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["CÓDIGO", "CODIGO", "COD"]) : 1;
+  const idxDesc = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["DESCRIÇÃO", "DESCRICAO", "PRODUTO", "SERVIÇO", "SERVICO", "OBJETO"]) : 2;
+  const idxUnidade = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["UNIDADE", "UN.", "UNID", "MEDIDA"]) : 3;
+  const idxQtd = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["QUANTIDADE", "QTDE", "QTD"]) : 4;
+  const idxSituacao = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["SITUAÇÃO", "SITUACAO", "STATUS"]) : 5;
+  const idxCnpj = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["CNPJ"]) : 6;
+  const idxFornecedor = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["RAZÃO SOCIAL", "RAZAO SOCIAL", "FORNECEDOR", "PROPONENTE"]) : 7;
+  const idxFantasia = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["NOME FANTASIA", "FANTASIA"]) : 8;
+  const idxValor = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["VALOR UNITÁRIO", "VALOR UNITARIO", "VLR UNIT", "VL UNIT", "PREÇO", "PRECO"]) : 9;
+  const idxTotal = temCabecalho ? indiceColunaItemProcesso(cabecalho, ["VALOR TOTAL", "TOTAL"]) : 10;
+
+  return dados.map(row => {
+    const cnpj = idxCnpj >= 0 ? formatCnpj(row[idxCnpj] || '') : '';
+    const razaoSocial = idxFornecedor >= 0 ? String(row[idxFornecedor] || '').trim() : '';
+    const nomeFantasia = idxFantasia >= 0 ? String(row[idxFantasia] || '').trim() : '';
+    const valorUnitario = idxValor >= 0 ? normalizarValorImportado(row[idxValor]) : '';
+    const situacao = idxSituacao >= 0 ? normalizarCadastro(row[idxSituacao] || '') : '';
+    return novoItemResultado({
+      codigo: idxCodigo >= 0 ? String(row[idxCodigo] || '').trim() : '',
+      descricao: idxDesc >= 0 ? String(row[idxDesc] || '').trim() : '',
+      unidade: idxUnidade >= 0 ? String(row[idxUnidade] || '').trim() : '',
+      quantidade: idxQtd >= 0 ? normalizarQuantidadeImportada(row[idxQtd]) : '',
+      situacao: situacao || (valorUnitario || cnpj || razaoSocial ? 'ACEITO' : ''),
+      cnpj,
+      razaoSocial,
+      nomeFantasia,
+      valorUnitario,
+      valorTotal: idxTotal >= 0 ? normalizarValorImportado(row[idxTotal]) : ''
+    });
+  }).filter(item => item.descricao || item.codigo || item.quantidade || item.unidade || item.cnpj || item.razaoSocial || item.valorUnitario);
+}
+
+function aplicarFornecedoresResultadoImportado(itens) {
+  const resumo = { localizados: 0, cadastrados: 0 };
+  itens.forEach(item => {
+    const cnpjDigits = onlyDigits(item.cnpj);
+    if (!cnpjDigits) return;
+    const existente = buscarFornecedorPorCnpj(item.cnpj);
+    if (existente) {
+      item.fornecedorId = existente.id || "";
+      item.cnpj = formatCnpj(existente.cnpj || item.cnpj);
+      item.razaoSocial = existente.razaoSocial || existente.nomeFantasia || item.razaoSocial || "";
+      item.nomeFantasia = existente.nomeFantasia || item.nomeFantasia || "";
+      resumo.localizados += 1;
+      return;
+    }
+    const nome = (item.razaoSocial || item.nomeFantasia || '').trim();
+    if (!nome) return;
+    const fornecedor = upsertFornecedor({
+      cnpj: item.cnpj,
+      razaoSocial: nome,
+      nomeFantasia: item.nomeFantasia || '',
+      origem: 'RESULTADO IMPORTADO'
+    });
+    item.fornecedorId = fornecedor?.id || "";
+    item.cnpj = formatCnpj(item.cnpj);
+    item.razaoSocial = nome;
+    item.nomeFantasia = item.nomeFantasia || "";
+    resumo.cadastrados += 1;
+  });
+  return resumo;
+}
+
 function calcularResultadoItens() {
   let totalGeral = 0;
   resultadoItens.forEach(item => {
     if (Array.isArray(item.divisoesResultado) && item.divisoesResultado.length) {
       item.valorTotal = item.divisoesResultado.reduce((soma, divisao) => {
-        const unitarioDivisao = Math.round(((parseBRLToNumber(divisao.valorUnitario) || 0) + Number.EPSILON) * 100) / 100;
+        const unitarioDivisao = parseBRLToNumber(divisao.valorUnitario) || 0;
         const quantidadeDivisao = parseBRLToNumber(divisao.quantidade) || 0;
         divisao.valorTotal = Math.round(((unitarioDivisao * quantidadeDivisao) + Number.EPSILON) * 100) / 100;
         return normalizarCadastro(divisao.situacao) === 'DESERTO' ? soma : soma + divisao.valorTotal;
       }, 0);
       totalGeral += item.valorTotal;
     } else {
-      const unitario = Math.round(((parseBRLToNumber(item.valorUnitario) || 0) + Number.EPSILON) * 100) / 100;
+      const unitario = parseBRLToNumber(item.valorUnitario) || 0;
       const quantidade = parseBRLToNumber(item.quantidade) || 0;
       item.valorTotal = Math.round(((unitario * quantidade) + Number.EPSILON) * 100) / 100;
       if (normalizarCadastro(item.situacao) !== 'DESERTO') totalGeral += item.valorTotal;
@@ -6869,6 +7037,10 @@ function renderResultadoItens() {
           <span class="muted">Total do item: R$ <span data-res-total>${escHtml(formatBRLDisplay(item.valorTotal || 0) || '0,00')}</span></span>
         </div>
         <div class="grid">
+          <div class="field">
+            <label>Código</label>
+            <input class="input" data-res-field="codigo" value="${escHtml(item.codigo || '')}" readonly>
+          </div>
           <div class="field" style="grid-column:1/-1">
             <label>Descrição do item</label>
             <input class="input" data-res-field="descricao" value="${escHtml(item.descricao || '')}" readonly>
@@ -6920,8 +7092,7 @@ function renderResultadoItens() {
       if (!item) return;
       if (input.classList.contains('res-cnpj')) input.value = formatCnpj(input.value);
       if (input.classList.contains('res-valor-unitario')) {
-        let value = input.value.replace(/\D/g, '');
-        input.value = value ? (parseFloat(value) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+        input.value = input.value.replace(/[^\d,.-]/g, '').replace(/(?!^)-/g, '');
       }
       item[input.dataset.resField] = input.value;
       calcularResultadoItens();
@@ -6935,6 +7106,13 @@ function renderResultadoItens() {
     });
     input.addEventListener('blur', () => {
       const card = input.closest('[data-res-item]');
+      if (input.classList.contains('res-valor-unitario')) {
+        const item = resultadoItens[Number(card?.dataset.resItem)];
+        formatarValorCotacaoBlur(input);
+        if (item) item.valorUnitario = input.value;
+        calcularResultadoItens();
+        atualizarEtapasConcluidas();
+      }
       if (input.classList.contains('res-cnpj')) preencherFornecedorResultadoPorCnpj(Number(card?.dataset.resItem));
     });
   });
@@ -6996,8 +7174,7 @@ function renderResultadoItens() {
       if (!divisao) return;
       if (input.classList.contains('res-divisao-cnpj')) input.value = formatCnpj(input.value);
       if (input.classList.contains('res-divisao-valor')) {
-        let value = input.value.replace(/\D/g, '');
-        input.value = value ? (parseFloat(value) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+        input.value = input.value.replace(/[^\d,.-]/g, '').replace(/(?!^)-/g, '');
       }
       divisao[input.dataset.resDivisaoField] = input.value;
       calcularResultadoItens();
@@ -7012,6 +7189,15 @@ function renderResultadoItens() {
       preencherFornecedorResultadoPorCnpj(Number(card?.dataset.resItem), Number(row?.dataset.resDivisao));
     });
     input.addEventListener('blur', () => {
+      if (input.classList.contains('res-divisao-valor')) {
+        const card = input.closest('[data-res-item]');
+        const row = input.closest('[data-res-divisao]');
+        const divisao = resultadoItens[Number(card?.dataset.resItem)]?.divisoesResultado?.[Number(row?.dataset.resDivisao)];
+        formatarValorCotacaoBlur(input);
+        if (divisao) divisao.valorUnitario = input.value;
+        calcularResultadoItens();
+        atualizarEtapasConcluidas();
+      }
       if (!input.classList.contains('res-divisao-cnpj')) return;
       const card = input.closest('[data-res-item]');
       const row = input.closest('[data-res-divisao]');
@@ -7025,6 +7211,7 @@ function coletarResultadoItens() {
   calcularResultadoItens();
   return resultadoItens.map(item => ({
     id: item.id || genId(),
+    codigo: item.codigo || "",
     descricao: item.descricao || "",
     quantidade: item.quantidade || "",
     unidade: item.unidade || "",
@@ -7064,6 +7251,46 @@ btnImportResultadoItens?.addEventListener('click', () => {
   resultadoItens = itens;
   renderResultadoItens();
   showToast(`${itens.length} item(ns) recebido(s) no Resultado.`);
+});
+
+btnImportResultadoTxt?.addEventListener('click', () => fileImportResultadoTxt?.click());
+
+fileImportResultadoTxt?.addEventListener('change', async () => {
+  const file = fileImportResultadoTxt.files?.[0];
+  if (!file) return;
+  try {
+    const texto = await file.text();
+    const importados = parseResultadoTxt(texto);
+    if (!importados.length) {
+      alert('Nenhum item foi encontrado no TXT do resultado.');
+      return;
+    }
+
+    const validacao = validarResultadoContraCotacao(importados);
+    if (!validacao.ok) {
+      const detalhes = validacao.avisos.slice(0, 12).join('\n');
+      const complemento = validacao.avisos.length > 12 ? `\n... e mais ${validacao.avisos.length - 12} aviso(s).` : '';
+      if (!confirm(`Foram encontradas divergências entre o TXT do resultado e os itens cotados:\n\n${detalhes}${complemento}\n\nDeseja importar mesmo assim?`)) {
+        return;
+      }
+    } else if (validacao.avisos.length) {
+      console.warn('Importação do resultado sem conferência completa:', validacao.avisos);
+    }
+
+    if (resultadoItens.length && !confirm('Substituir os itens atuais do Resultado pelos itens importados do TXT?')) return;
+
+    const resumoFornecedores = aplicarFornecedoresResultadoImportado(importados);
+    resultadoItens = importados;
+    calcularResultadoItens();
+    renderResultadoItens();
+    atualizarEtapasConcluidas();
+    showToast(`${resultadoItens.length} item(s) importado(s) do resultado. ${resumoFornecedores.localizados} fornecedor(es) localizado(s), ${resumoFornecedores.cadastrados} cadastrado(s).`);
+  } catch (error) {
+    console.error('Erro ao importar TXT do resultado:', error);
+    alert(`Não foi possível importar o TXT do resultado.\n\nDetalhe: ${error?.message || error}`);
+  } finally {
+    fileImportResultadoTxt.value = '';
+  }
 });
 
 btnLimparResultadoItens?.addEventListener('click', () => {
