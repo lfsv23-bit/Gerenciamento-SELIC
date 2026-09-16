@@ -2307,7 +2307,9 @@ h4 {
   white-space: nowrap;
 }
 .homologacao-table .homologacao-deserto,
-.homologacao-table tr.homologacao-deserto {
+.homologacao-table tr.homologacao-deserto,
+.homologacao-table .homologacao-sem-homologacao,
+.homologacao-table tr.homologacao-sem-homologacao {
   color: #64748b;
   background: #f1f5f9;
 }

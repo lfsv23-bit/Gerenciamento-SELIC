@@ -165,6 +165,11 @@
       .toUpperCase();
   }
 
+  function situacaoResultadoSemHomologacao(value) {
+    const situacao = normalizarCadastro(value);
+    return situacao === 'DESERTO' || situacao === 'FRACASSADO';
+  }
+
   function loadTiposProtocoloLocalForMigration() {
     let salvos = [];
     try { salvos = JSON.parse(localStorage.getItem(TIPOS_PROTOCOLO_KEY) || '[]'); }
@@ -2642,6 +2647,7 @@ Ver Itens
 <option value="">Todas</option>
 <option value="ACEITO">ACEITO</option>
 <option value="DESERTO">DESERTO</option>
+<option value="FRACASSADO">FRACASSADO</option>
 </select>
 </div>
 </div>
@@ -6727,14 +6733,14 @@ function calcularResultadoItens() {
         const unitarioDivisao = parseBRLToNumber(divisao.valorUnitario) || 0;
         const quantidadeDivisao = parseBRLToNumber(divisao.quantidade) || 0;
         divisao.valorTotal = Math.round(((unitarioDivisao * quantidadeDivisao) + Number.EPSILON) * 100) / 100;
-        return normalizarCadastro(divisao.situacao) === 'DESERTO' ? soma : soma + divisao.valorTotal;
+        return situacaoResultadoSemHomologacao(divisao.situacao) ? soma : soma + divisao.valorTotal;
       }, 0);
       totalGeral += item.valorTotal;
     } else {
       const unitario = parseBRLToNumber(item.valorUnitario) || 0;
       const quantidade = parseBRLToNumber(item.quantidade) || 0;
       item.valorTotal = Math.round(((unitario * quantidade) + Number.EPSILON) * 100) / 100;
-      if (normalizarCadastro(item.situacao) !== 'DESERTO') totalGeral += item.valorTotal;
+      if (!situacaoResultadoSemHomologacao(item.situacao)) totalGeral += item.valorTotal;
     }
   });
   resultadoItensContainer?.querySelectorAll('[data-res-item]').forEach(card => {
@@ -6783,7 +6789,7 @@ function renderHomologacaoItens() {
         </thead>
         <tbody>
           ${itens.map(({ item, index, divisaoIndex }) => `
-            <tr class="${normalizarCadastro(item.situacao) === 'DESERTO' ? 'homologacao-deserto' : ''}">
+            <tr class="${situacaoResultadoSemHomologacao(item.situacao) ? 'homologacao-sem-homologacao' : ''}">
               <td>${index + 1}${divisaoIndex !== null ? `.${divisaoIndex + 1}` : ''}</td>
               <td>${escHtml(item.descricao || '')}</td>
               <td>${escHtml(item.unidade || '')}</td>
@@ -7004,6 +7010,7 @@ function renderDivisoesResultado(item, index) {
               <option value="">-- selecione --</option>
               <option value="ACEITO" ${divisao.situacao === 'ACEITO' ? 'selected' : ''}>ACEITO</option>
               <option value="DESERTO" ${divisao.situacao === 'DESERTO' ? 'selected' : ''}>DESERTO</option>
+              <option value="FRACASSADO" ${divisao.situacao === 'FRACASSADO' ? 'selected' : ''}>FRACASSADO</option>
             </select>
           </div>
           <div class="field">
@@ -7059,6 +7066,7 @@ function renderResultadoItens() {
               <option value="">-- selecione --</option>
               <option value="ACEITO" ${item.situacao === 'ACEITO' ? 'selected' : ''}>ACEITO</option>
               <option value="DESERTO" ${item.situacao === 'DESERTO' ? 'selected' : ''}>DESERTO</option>
+              <option value="FRACASSADO" ${item.situacao === 'FRACASSADO' ? 'selected' : ''}>FRACASSADO</option>
             </select>
           </div>
           <div class="field">
@@ -8285,7 +8293,7 @@ ${Array.isArray(item.etapasProcesso) && item.etapasProcesso.length ? `<b>Etapa:<
         ? `<div class="process-table-wrap"><table class="homologacao-table"><thead><tr><th>Item</th><th>Descrição do Produto/Serviço</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th><th>Situação</th><th>Proponente/Fornecedor</th></tr></thead><tbody>${homologacaoItensAceitos.map(res => `<tr><td>${safe(res.itemNumero || '')}</td><td>${safe(res.descricao || '')}</td><td>${safe(res.unidade || '')}</td><td>${safe(res.quantidade || '')}</td><td>${safe(formatBRLDisplay(parseBRLToNumber(res.valorUnitario) || 0) || '0,00')}</td><td>${safe(formatBRLDisplay(res.valorTotal || 0) || '0,00')}</td><td>${safe(res.situacao || '')}</td><td>${safe(res.razaoSocial || res.nomeFantasia || '')}${res.cnpj ? ` ${safe(res.cnpj)}` : ''}</td></tr>`).join('')}</tbody></table></div>`
         : '<div class="empty">Nenhum item aceito para homologação.</div>';
       const valorHomologadoCalculado = linhasResultadoProcesso(item)
-        .reduce((soma, res) => normalizarCadastro(res.situacao) === 'DESERTO' ? soma : soma + (Number(res.valorTotal) || 0), 0);
+        .reduce((soma, res) => situacaoResultadoSemHomologacao(res.situacao) ? soma : soma + (Number(res.valorTotal) || 0), 0);
       const valorHomologado = valorHomologadoCalculado ? formatBRLDisplay(valorHomologadoCalculado) : (item.resultadoValorHomologado || '');
       const registroPrecoTexto = item.registroPrecos === 'sim' || item.tipoRegistroPreco ? 'SIM' : item.registroPrecos === 'nao' ? 'NÃO' : '';
       const tipoRegistroPrecoTexto = item.tipoRegistroPreco === 'gerador'
@@ -9236,7 +9244,7 @@ atualizarEtapasConcluidas();
 
     function valorHomologadoProcesso(processo) {
       const valorCalculado = linhasResultadoProcesso(processo)
-        .reduce((soma, item) => normalizarCadastro(item.situacao) === "DESERTO" ? soma : soma + (Number(item.valorTotal) || 0), 0);
+        .reduce((soma, item) => situacaoResultadoSemHomologacao(item.situacao) ? soma : soma + (Number(item.valorTotal) || 0), 0);
       return valorCalculado ? formatBRLDisplay(valorCalculado) : valorProcesso(processo, "resultadoValorHomologado");
     }
 
@@ -9845,7 +9853,7 @@ atualizarEtapasConcluidas();
     }
 
     function resumoGrupoProduto(grupo) {
-      const homologados = grupo.ocorrencias.filter(item => item.origem === "Resultado" && normalizar(item.situacao || "") !== "DESERTO");
+      const homologados = grupo.ocorrencias.filter(item => item.origem === "Resultado" && !situacaoResultadoSemHomologacao(item.situacao));
       const totaisHomologados = homologados.map(item => parseBRLToNumber(item.valorTotal)).filter(value => value !== null);
       const unitariosHomologados = homologados.map(item => parseBRLToNumber(item.valorUnitario)).filter(value => value !== null);
       const quantidadeTotal = somaNumeros(homologados.map(item => item.quantidade));
@@ -11784,7 +11792,7 @@ atualizarEtapasConcluidas();
       const preenchidos = linhas.filter(item => {
         const situacao = normalizarCadastro(item.situacao);
         const temResultado = item.valorUnitario || item.valorTotal || item.cnpj || item.razaoSocial || item.nomeFantasia;
-        return situacao !== 'DESERTO' && temResultado;
+        return !situacaoResultadoSemHomologacao(situacao) && temResultado;
       });
       return { linhas: preenchidos, fallback: preenchidos.length > 0 };
     }
@@ -11859,7 +11867,7 @@ atualizarEtapasConcluidas();
           return alert('O processo gerador selecionado ainda não possui itens com resultado preenchido para importar. Verifique se os itens estão salvos no bloco Resultado/Homologação.');
         }
 
-        if (fallback && !confirm('Não encontrei itens marcados como ACEITO no Resultado. Deseja importar os itens preenchidos que não estão como DESERTO?')) return;
+        if (fallback && !confirm('Não encontrei itens marcados como ACEITO no Resultado. Deseja importar os itens preenchidos que não estão como DESERTO ou FRACASSADO?')) return;
 
         const itensHomologados = montarTabelaIrpPorLinhasResultado(linhas);
         if (itensDraft.length && !confirm('Substituir os itens atuais da IRP pelos itens homologados do processo gerador?')) return;
