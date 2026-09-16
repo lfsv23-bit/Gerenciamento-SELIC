@@ -768,6 +768,22 @@ dialog {
   background: #f8fbff;
 }
 
+.produto-vinculo-dialog {
+  width: min(1020px, 96vw);
+  max-height: 92vh;
+  padding: 0;
+  overflow: hidden;
+}
+
+.produto-vinculo-dialog .modal-head {
+  background: #fff;
+}
+
+.produto-vinculo-dialog .modal-body {
+  max-height: calc(92vh - 64px);
+  overflow-y: auto;
+}
+
 .produto-vinculo-hero span,
 .produto-vinculo-summary span,
 .produto-vinculo-processo-head span,
@@ -796,8 +812,7 @@ dialog {
   margin-bottom: 12px;
 }
 
-.produto-vinculo-summary div,
-.produto-vinculo-fase {
+.produto-vinculo-summary div {
   padding: 11px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
@@ -813,9 +828,39 @@ dialog {
 }
 
 .produto-vinculo-fase-line + .produto-vinculo-fase-line {
-  margin-top: 8px;
-  padding-top: 8px;
   border-top: 1px solid #e5e7eb;
+}
+
+.produto-vinculo-fase-line {
+  display: grid;
+  grid-template-columns: 24px minmax(140px, 1fr) minmax(0, 2fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 9px 0;
+}
+
+.produto-vinculo-fase-line:only-child {
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 2fr);
+}
+
+.produto-vinculo-fase-line strong,
+.produto-vinculo-fase-line small {
+  margin: 0;
+}
+
+.produto-vinculo-fase-line small {
+  overflow-wrap: anywhere;
+}
+
+.produto-vinculo-item-numero {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.produto-vinculo-fase-empty {
+  color: #64748b;
+  font-size: 13px;
 }
 
 .produto-vinculos-list {
@@ -827,7 +872,7 @@ dialog {
 .produto-vinculo-processo {
   padding: 12px;
   border: 1px solid #dbe3ef;
-  border-radius: 12px;
+  border-radius: 8px;
   background: #f8fafc;
 }
 
@@ -847,8 +892,27 @@ dialog {
 
 .produto-vinculo-fases {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.produto-vinculo-fase {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+}
+
+.produto-vinculo-fase + .produto-vinculo-fase {
+  border-top: 1px solid #e2e8f0;
+}
+
+.produto-vinculo-fase > span {
+  padding-top: 8px;
 }
 
 .produto-form-dialog {
@@ -1484,10 +1548,21 @@ dialog {
   .produtos-filter-card,
   .produto-vinculo-summary,
   .produto-vinculo-processo-head,
-  .produto-vinculo-fases,
   .produto-detail-grid,
   .produto-form-grid {
     grid-template-columns: 1fr;
+  }
+  .produto-vinculo-fase,
+  .produto-vinculo-fase-line,
+  .produto-vinculo-fase-line:only-child {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+  .produto-vinculo-fase > span {
+    padding-top: 0;
+  }
+  .produto-vinculo-item-numero {
+    margin-top: 6px;
   }
   .irp-page-head {
     flex-direction: column;

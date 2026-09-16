@@ -9905,20 +9905,20 @@ atualizarEtapasConcluidas();
         return `
           <div class="produto-vinculo-fase">
             <span>${esc(titulo)}</span>
-            <strong>Valor não informado</strong>
-            <small>Quantidade não informada</small>
+            <div class="produto-vinculo-fase-empty">Sem informação nesta fase</div>
           </div>
         `;
       }
       return `
         <div class="produto-vinculo-fase">
           <span>${esc(titulo)}</span>
-          ${itens.map((item, index) => `
+          <div class="produto-vinculo-fase-items">${itens.map((item, index) => `
             <div class="produto-vinculo-fase-line">
+              ${itens.length > 1 ? `<span class="produto-vinculo-item-numero">${index + 1}</span>` : ""}
               <strong>${esc(textoValorOuNaoInformado(item.valorTotal || calcularTotal(item.quantidade, item.valorUnitario, "")))}</strong>
-              <small>${itens.length > 1 ? `${index + 1}. ` : ""}Qtd.: ${esc(textoQuantidadeOuNaoInformado(item.quantidade))}${item.valorUnitario ? ` | Unit.: R$ ${esc(textoValor(item.valorUnitario))}` : ""}${item.fornecedor ? ` | ${esc(item.fornecedor)}` : ""}</small>
+              <small>Qtd.: ${esc(textoQuantidadeOuNaoInformado(item.quantidade))}${item.valorUnitario ? ` · Unit.: R$ ${esc(textoValor(item.valorUnitario))}` : ""}${item.fornecedor ? ` · ${esc(item.fornecedor)}` : ""}</small>
             </div>
-          `).join("")}
+          `).join("")}</div>
         </div>
       `;
     }
@@ -10528,7 +10528,7 @@ atualizarEtapasConcluidas();
             ` : `<div class="empty">Nenhum produto encontrado nos processos cadastrados.</div>`}
           </div>
 
-          <dialog id="produto_dlg" style="width:min(760px,94vw)">
+          <dialog id="produto_dlg" class="produto-vinculo-dialog">
             <div class="modal-head">
               <strong>Vínculos do Produto</strong>
               <button type="button" class="btn ghost" id="produto_dlg_close">Fechar</button>
