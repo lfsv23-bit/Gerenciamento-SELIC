@@ -3048,6 +3048,7 @@ Excluir
 <thead>
 <tr>
 <th>Item</th>
+<th>Código</th>
 <th>Valor Unitário</th>
 <th>Quantidade</th>
 <th>Unidade</th>
@@ -3073,6 +3074,11 @@ Excluir
 <div class="modal-body">
 
 <div class="grid">
+
+<div class="field">
+<label>Código</label>
+<input id="lic_item_codigo" class="input" placeholder="Ex: 123.456.789">
+</div>
 
 <div class="field" style="grid-column:1/-1">
 <label>Descrição do item</label>
@@ -3769,6 +3775,7 @@ const btnItemCancel = container.querySelector('#lic_item_cancel');
 const btnItemSave = container.querySelector('#lic_item_save');
 
 const fldItemDesc = container.querySelector('#lic_item_desc');
+const fldItemCodigo = container.querySelector('#lic_item_codigo');
 const fldItemValor = container.querySelector('#lic_item_valor');
 const fldItemQtd = container.querySelector('#lic_item_qtd');
 const fldItemUnidade = container.querySelector('#lic_item_unidade');
@@ -4079,6 +4086,7 @@ btnAddItem.onclick = ()=>{
 
 itemProcessoEditIndex = -1;
 tituloItemForm.textContent = "Novo Item";
+fldItemCodigo.value = "";
 fldItemDesc.value = "";
 fldItemValor.value = "";
 fldItemQtd.value = "";
@@ -4121,16 +4129,18 @@ function itensProcessoDoTxt(texto) {
   const linhas = parseItensEditalTxt(texto);
   if (!linhas.length) return [];
   const primeiraLinha = linhas[0].map(cell => normalizarCadastro(cell)).join(' ');
-  const possuiCabecalho = /(ITEM|DESCRICAO|DESCRIÇÃO|PRODUTO|SERVICO|SERVIÇO|QUANTIDADE|QTDE|UNIDADE|VALOR)/i.test(primeiraLinha);
+  const possuiCabecalho = /(ITEM|CÓDIGO|CODIGO|DESCRICAO|DESCRIÇÃO|PRODUTO|SERVICO|SERVIÇO|QUANTIDADE|QTDE|UNIDADE|VALOR)/i.test(primeiraLinha);
   const header = possuiCabecalho ? linhas[0] : [];
   const dados = possuiCabecalho ? linhas.slice(1) : linhas;
 
   const idxDesc = possuiCabecalho ? indiceColunaItemProcesso(header, ["DESCRIÇÃO", "DESCRICAO", "PRODUTO", "SERVIÇO", "SERVICO", "OBJETO"]) : 0;
+  const idxCodigo = possuiCabecalho ? indiceColunaItemProcesso(header, ["CÓDIGO", "CODIGO", "COD"]) : -1;
   const idxValor = possuiCabecalho ? indiceColunaItemProcesso(header, ["VALOR UNITÁRIO", "VALOR UNITARIO", "VL UNIT", "PREÇO", "PRECO"]) : 1;
   const idxQtd = possuiCabecalho ? indiceColunaItemProcesso(header, ["QUANTIDADE", "QTDE", "QTD"]) : 2;
   const idxUnidade = possuiCabecalho ? indiceColunaItemProcesso(header, ["UNIDADE", "UN.", "UNID", "MEDIDA"]) : 3;
 
   return dados.map(row => ({
+    codigo: idxCodigo >= 0 ? String(row[idxCodigo] || "").trim() : "",
     descricao: String(row[idxDesc >= 0 ? idxDesc : 0] || "").trim(),
     valor: normalizarValorImportado(row[idxValor >= 0 ? idxValor : 1]),
     quantidade: normalizarQuantidadeImportada(row[idxQtd >= 0 ? idxQtd : 2]),
@@ -4314,6 +4324,7 @@ const unidade = fldItemUnidade.value;
 if(!descricao) return alert("Informe a descrição do item");
 
 const itemProcesso = {
+codigo: fldItemCodigo.value.trim(),
 descricao,
 valor,
 quantidade,
@@ -4984,6 +4995,7 @@ const tr = document.createElement("tr");
 
 tr.innerHTML = `
 <td>${escHtml(item.descricao || '')}</td>
+<td>${escHtml(item.codigo || '')}</td>
 <td>${escHtml(item.valor || '')}</td>
 <td>${escHtml(item.quantidade || '')}</td>
 <td>${escHtml(item.unidade || '')}</td>
@@ -5003,6 +5015,7 @@ const item = itensProcesso[Number(btn.dataset.editItem)];
 if(!item) return;
 itemProcessoEditIndex = Number(btn.dataset.editItem);
 tituloItemForm.textContent = "Editar Item";
+fldItemCodigo.value = item.codigo || "";
 fldItemDesc.value = item.descricao || "";
 fldItemValor.value = item.valor || "";
 fldItemQtd.value = item.quantidade || "";
@@ -6163,6 +6176,10 @@ function renderCotacaoItens() {
         <button type="button" class="btn danger" data-cot-remove-item="${itemIndex}">Excluir item</button>
       </div>
       <div class="grid">
+        <div class="field">
+          <label>Código</label>
+          <input class="input" data-cot-field="codigo" value="${escHtml(item.codigo || '')}" placeholder="Ex: 123.456.789">
+        </div>
         <div class="field" style="grid-column:1/-1">
           <label>Descrição do item</label>
           <input class="input cot-item-descricao" data-cot-field="descricao" value="${escHtml(item.descricao || '')}" placeholder="Descrição do item">
@@ -6784,6 +6801,7 @@ function renderHomologacaoItens() {
         <thead>
           <tr>
             <th>Item</th>
+            <th>Código</th>
             <th>Descrição do Produto/Serviço</th>
             <th>Unidade</th>
             <th>Quantidade</th>
@@ -6797,6 +6815,7 @@ function renderHomologacaoItens() {
           ${itens.map(({ item, index, divisaoIndex }) => `
             <tr class="${situacaoResultadoSemHomologacao(item.situacao) ? 'homologacao-sem-homologacao' : ''}">
               <td>${index + 1}${divisaoIndex !== null ? `.${divisaoIndex + 1}` : ''}</td>
+              <td><input class="input" data-homolog-codigo="${index}" value="${escHtml(item.codigo || '')}" aria-label="Código do item ${index + 1}" placeholder="Código"></td>
               <td>${escHtml(item.descricao || '')}</td>
               <td>${escHtml(item.unidade || '')}</td>
               <td>${escHtml(item.quantidade || '')}</td>
@@ -6810,6 +6829,21 @@ function renderHomologacaoItens() {
       </table>
     </div>
   ` : '<div class="muted" style="font-size:12px">Nenhum item encontrado para a situação selecionada.</div>';
+
+  homologacaoItensContainer.querySelectorAll('[data-homolog-codigo]').forEach(input => {
+    input.addEventListener('input', () => {
+      const index = Number(input.dataset.homologCodigo);
+      const item = resultadoItens[index];
+      if (!item) return;
+      item.codigo = input.value;
+      const campoResultado = resultadoItensContainer?.querySelector(`[data-res-item="${index}"] [data-res-field="codigo"]`);
+      if (campoResultado) campoResultado.value = input.value;
+      homologacaoItensContainer.querySelectorAll(`[data-homolog-codigo="${index}"]`).forEach(outro => {
+        if (outro !== input) outro.value = input.value;
+      });
+      atualizarEtapasConcluidas();
+    });
+  });
 }
 
 function alvoResultadoFornecedor(index, divisaoIndex = null) {
@@ -7052,7 +7086,7 @@ function renderResultadoItens() {
         <div class="grid">
           <div class="field">
             <label>Código</label>
-            <input class="input" data-res-field="codigo" value="${escHtml(item.codigo || '')}" readonly>
+            <input class="input" data-res-field="codigo" value="${escHtml(item.codigo || '')}" placeholder="Ex: 123.456.789">
           </div>
           <div class="field" style="grid-column:1/-1">
             <label>Descrição do item</label>
@@ -8281,7 +8315,7 @@ ${Array.isArray(item.etapasProcesso) && item.etapasProcesso.length ? `<b>Etapa:<
       const cotItensHtml = Array.isArray(item.cotItens) && item.cotItens.length
         ? item.cotItens.map((cot, idx) => `
           <div style="margin:8px 0;padding:8px;border:1px solid #dbe3ef;border-radius:8px">
-            <strong>${idx + 1}. ${safe(cot.descricao || 'Item sem descrição')}</strong><br>
+            <strong>${idx + 1}. ${safe(cot.descricao || 'Item sem descrição')}</strong>${cot.codigo ? ` <span class="muted">| Código: ${safe(cot.codigo)}</span>` : ''}<br>
             <span class="muted">Qtd: ${safe(cot.quantidade || '')} ${safe(cot.unidade || '')} | Unitário: R$ ${safe(formatBRLDisplay(cot.resultadoUnitario || 0) || '0,00')} | Total: R$ ${safe(formatBRLDisplay(cot.resultadoTotal || 0) || '0,00')}</span>
           </div>
         `).join('')
@@ -8289,7 +8323,7 @@ ${Array.isArray(item.etapasProcesso) && item.etapasProcesso.length ? `<b>Etapa:<
       const resultadoItensHtml = Array.isArray(item.resultadoItens) && item.resultadoItens.length
         ? linhasResultadoProcesso(item).map((res) => `
           <div style="margin:8px 0;padding:8px;border:1px solid #dbe3ef;border-radius:8px">
-            <strong>${safe(res.itemNumero || '')}. ${safe(res.descricao || 'Item sem descrição')}</strong><br>
+            <strong>${safe(res.itemNumero || '')}. ${safe(res.descricao || 'Item sem descrição')}</strong>${res.codigo ? ` <span class="muted">| Código: ${safe(res.codigo)}</span>` : ''}<br>
             <span class="muted">Qtd: ${safe(res.quantidade || '')} ${safe(res.unidade || '')} | Situação: ${safe(res.situacao || 'Não informada')} | Unitário: R$ ${safe(formatBRLDisplay(parseBRLToNumber(res.valorUnitario) || 0) || '0,00')} | Total: R$ ${safe(formatBRLDisplay(res.valorTotal || 0) || '0,00')}</span><br>
             <span class="muted">Fornecedor: ${safe(res.razaoSocial || res.nomeFantasia || 'Não informado')} ${res.cnpj ? `- ${safe(res.cnpj)}` : ''}</span>
           </div>
@@ -8298,7 +8332,7 @@ ${Array.isArray(item.etapasProcesso) && item.etapasProcesso.length ? `<b>Etapa:<
       const homologacaoItensAceitos = linhasResultadoProcesso(item)
         .filter(res => normalizarCadastro(res.situacao) === 'ACEITO');
       const homologacaoItensViewHtml = homologacaoItensAceitos.length
-        ? `<div class="process-table-wrap"><table class="homologacao-table"><thead><tr><th>Item</th><th>Descrição do Produto/Serviço</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th><th>Situação</th><th>Proponente/Fornecedor</th></tr></thead><tbody>${homologacaoItensAceitos.map(res => `<tr><td>${safe(res.itemNumero || '')}</td><td>${safe(res.descricao || '')}</td><td>${safe(res.unidade || '')}</td><td>${safe(res.quantidade || '')}</td><td>${safe(formatBRLDisplay(parseBRLToNumber(res.valorUnitario) || 0) || '0,00')}</td><td>${safe(formatBRLDisplay(res.valorTotal || 0) || '0,00')}</td><td>${safe(res.situacao || '')}</td><td>${safe(res.razaoSocial || res.nomeFantasia || '')}${res.cnpj ? ` ${safe(res.cnpj)}` : ''}</td></tr>`).join('')}</tbody></table></div>`
+        ? `<div class="process-table-wrap"><table class="homologacao-table"><thead><tr><th>Item</th><th>Código</th><th>Descrição do Produto/Serviço</th><th>Unidade</th><th>Quantidade</th><th>Valor Unitário</th><th>Valor Total</th><th>Situação</th><th>Proponente/Fornecedor</th></tr></thead><tbody>${homologacaoItensAceitos.map(res => `<tr><td>${safe(res.itemNumero || '')}</td><td>${safe(res.codigo || '')}</td><td>${safe(res.descricao || '')}</td><td>${safe(res.unidade || '')}</td><td>${safe(res.quantidade || '')}</td><td>${safe(formatBRLDisplay(parseBRLToNumber(res.valorUnitario) || 0) || '0,00')}</td><td>${safe(formatBRLDisplay(res.valorTotal || 0) || '0,00')}</td><td>${safe(res.situacao || '')}</td><td>${safe(res.razaoSocial || res.nomeFantasia || '')}${res.cnpj ? ` ${safe(res.cnpj)}` : ''}</td></tr>`).join('')}</tbody></table></div>`
         : '<div class="empty">Nenhum item aceito para homologação.</div>';
       const valorHomologadoCalculado = linhasResultadoProcesso(item)
         .reduce((soma, res) => situacaoResultadoSemHomologacao(res.situacao) ? soma : soma + (Number(res.valorTotal) || 0), 0);
