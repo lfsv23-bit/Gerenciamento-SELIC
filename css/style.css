@@ -234,16 +234,8 @@ tbody tr:hover {
   background: #dc2626;
   border-color: #dc2626;
 }
-.btn.warning.soft {
-  background: #fffbeb;
-  border-color: #fcd34d;
-  color: #92400e;
-}
 .btn:hover:not(.primary):not(.danger) {
   background: #f3f4f6;
-}
-.btn.warning.soft:hover:not(.primary):not(.danger) {
-  background: #fef3c7;
 }
 
 .btn:disabled {
@@ -2202,6 +2194,11 @@ h4 {
   margin: 0;
   line-height: 1.45;
   color: rgba(255,255,255,.92);
+}
+.process-hero-esfinge {
+  margin-top: 8px;
+  color: rgba(255,255,255,.92);
+  font-size: 13px;
 }
 .process-status-stack {
   display: flex;

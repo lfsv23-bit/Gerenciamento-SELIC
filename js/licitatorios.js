@@ -2399,6 +2399,11 @@ Ver Itens
 </div>
 
 <div class="field">
+<label>e-Sfinge</label>
+<input id="lic_edital_esfinge" class="input" placeholder="Informe o número e-Sfinge">
+</div>
+
+<div class="field">
 <label>Valor estimado</label>
 <input id="lic_edital_valor_estimado" class="input" placeholder="0,00">
 </div>
@@ -5471,6 +5476,7 @@ const normalized = imported.map(it => ({
   etapasProcesso: Array.isArray(it.etapasProcesso) ? it.etapasProcesso : [],
   editalForma: it.editalForma || '',
   editalNumero: it.editalNumero || '',
+  editalEsfinge: it.editalEsfinge || '',
   editalValorEstimado: it.editalValorEstimado || '',
   editalCriterio: it.editalCriterio || '',
   editalModoDisputa: it.editalModoDisputa || '',
@@ -7517,6 +7523,7 @@ trValorEstimado: container.querySelector('#lic_tr_valor_estimado')?.value || "",
 
 editalForma: container.querySelector('#lic_edital_forma')?.value || "",
 editalNumero: container.querySelector('#lic_edital_numero')?.value || "",
+editalEsfinge: container.querySelector('#lic_edital_esfinge')?.value.trim() || "",
 editalValorEstimado: container.querySelector('#lic_edital_valor_estimado')?.value || "",
 editalCriterio: container.querySelector('#lic_edital_criterio')?.value || "",
 editalModoDisputa: container.querySelector('#lic_edital_modo_disputa')?.value || "",
@@ -7818,6 +7825,7 @@ if (editalFormaSelect) {
   editalFormaSelect.value = formaEquivalente?.value || "";
 }
 container.querySelector('#lic_edital_numero').value = item.editalNumero || "";
+container.querySelector('#lic_edital_esfinge').value = item.editalEsfinge || "";
 container.querySelector('#lic_edital_valor_estimado').value = item.editalValorEstimado || "";
 const editalCriterioSelect = container.querySelector('#lic_edital_criterio');
 if (editalCriterioSelect) {
@@ -8340,6 +8348,7 @@ ${Array.isArray(item.etapasProcesso) && item.etapasProcesso.length ? `<b>Etapa:<
               <span class="process-view-kicker">${safe(protocolo || 'PROCESSO')}</span>
               <h2>${safe(item.numero || 'Sem número')}</h2>
               <p>${textBlock(item.objeto || 'Objeto não informado')}</p>
+              ${item.editalEsfinge ? `<div class="process-hero-esfinge">e-Sfinge: ${safe(item.editalEsfinge)}</div>` : ''}
             </div>
             <div class="process-status-stack">
               <span>${safe(item.situacao || 'Sem situação')}</span>
@@ -10187,237 +10196,6 @@ atualizarEtapasConcluidas();
       }
     }
 
-    function dataArquivoProdutos() {
-      const pad = value => String(value).padStart(2, "0");
-      const agora = new Date();
-      return [
-        agora.getFullYear(),
-        pad(agora.getMonth() + 1),
-        pad(agora.getDate()),
-        "_",
-        pad(agora.getHours()),
-        pad(agora.getMinutes()),
-        pad(agora.getSeconds())
-      ].join("");
-    }
-
-    function baixarJson(nomeArquivo, dados) {
-      const blob = new Blob([JSON.stringify(dados, null, 2)], { type: "application/json;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = nomeArquivo;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    }
-
-    function produtoBackupOcorrencia(item, grupo) {
-      return {
-        id: item.id || "",
-        grupoChave: grupo?.chave || chaveProduto(item),
-        codigo: formatCodigoProduto(item.codigo || grupo?.codigo || ""),
-        descricao: item.descricao || grupo?.descricao || "",
-        unidade: item.unidade || grupo?.unidade || "",
-        quantidade: item.quantidade || "",
-        valorUnitario: item.valorUnitario || "",
-        valorTotal: item.valorTotal || "",
-        situacao: item.situacao || "",
-        fornecedor: item.fornecedor || "",
-        origem: item.origem || "",
-        vinculo: item.vinculo || "",
-        processo: item.processo ? {
-          id: item.processo.id || "",
-          supabaseId: item.processo.supabaseId || "",
-          numero: item.processo.numero || "",
-          objeto: item.processo.objeto || "",
-          secretaria: item.processo.secretaria || "",
-          modalidade: item.processo.modalidade || ""
-        } : null,
-        source: {
-          ...(item.source || {}),
-          headers: Array.isArray(item.source?.headers) ? item.source.headers : undefined
-        }
-      };
-    }
-
-    function exportarBackupProdutos() {
-      const grupos = gruposProdutosDaLista(produtos);
-      const backup = {
-        formato: "gerenciamento-selic-produtos-backup",
-        versao: 1,
-        geradoEm: new Date().toISOString(),
-        observacao: "Backup temporario para correcao dos produtos consolidados. Reimporte somente arquivos revisados deste mesmo formato.",
-        totais: {
-          produtosUnicos: grupos.length,
-          ocorrencias: produtos.length,
-          processos: new Set(produtos.map(item => item.processo?.id || item.processo?.numero).filter(Boolean)).size
-        },
-        produtos: grupos.map(grupo => ({
-          grupoChave: grupo.chave,
-          codigo: grupo.codigo || "",
-          descricao: grupo.descricao || "",
-          unidade: grupo.unidade || "",
-          resumo: resumoGrupoProduto(grupo),
-          ocorrencias: grupo.ocorrencias.map(item => produtoBackupOcorrencia(item, grupo))
-        }))
-      };
-      baixarJson(`backup_produtos_${dataArquivoProdutos()}.json`, backup);
-      showToast(`Backup exportado com ${backup.totais.ocorrencias} ocorrência(s) de produto.`);
-    }
-
-    function ocorrenciasDoBackup(backup) {
-      if (Array.isArray(backup?.ocorrencias)) return backup.ocorrencias;
-      if (!Array.isArray(backup?.produtos)) return [];
-      return backup.produtos.flatMap(produto => {
-        const ocorrencias = Array.isArray(produto?.ocorrencias) ? produto.ocorrencias : [];
-        return ocorrencias.map(ocorrencia => ({
-          ...ocorrencia,
-          codigo: ocorrencia.codigo || produto.codigo || "",
-          descricao: ocorrencia.descricao || produto.descricao || "",
-          unidade: ocorrencia.unidade || produto.unidade || ""
-        }));
-      });
-    }
-
-    function localizarProcessoBackup(ref = {}) {
-      if (!ref) return null;
-      return processos.find(processo =>
-        (ref.id && processo.id === ref.id) ||
-        (ref.supabaseId && processo.supabaseId === ref.supabaseId) ||
-        (ref.numero && processo.numero === ref.numero)
-      ) || null;
-    }
-
-    function localizarProdutoAvulsoBackup(ocorrencia = {}) {
-      const source = ocorrencia.source || {};
-      if (source.index !== undefined && produtosAvulsos[source.index]) return source.index;
-      if (!ocorrencia.id) return -1;
-      return produtosAvulsos.findIndex(item => item.id === ocorrencia.id);
-    }
-
-    function dadosProdutoBackup(ocorrencia = {}) {
-      return {
-        codigo: formatCodigoProduto(ocorrencia.codigo || ""),
-        descricao: String(ocorrencia.descricao || "").trim(),
-        unidade: String(ocorrencia.unidade || "").trim(),
-        quantidade: String(ocorrencia.quantidade || "").trim(),
-        valorUnitario: String(ocorrencia.valorUnitario || "").trim(),
-        valorTotal: String(ocorrencia.valorTotal || "").trim(),
-        situacao: String(ocorrencia.situacao || "").trim(),
-        fornecedor: String(ocorrencia.fornecedor || "").trim()
-      };
-    }
-
-    function aplicarBackupEmOcorrencia(ocorrencia) {
-      const source = ocorrencia.source || {};
-      const dados = dadosProdutoBackup(ocorrencia);
-      if (!dados.descricao && !dados.codigo) return { ok: false, motivo: "Produto sem descrição e sem código no backup." };
-
-      if (source.tipo === "avulso") {
-        const idx = localizarProdutoAvulsoBackup(ocorrencia);
-        if (idx < 0) return { ok: false, motivo: "Produto avulso não encontrado." };
-        produtosAvulsos[idx] = {
-          ...(produtosAvulsos[idx] || {}),
-          ...dados,
-          id: produtosAvulsos[idx]?.id || ocorrencia.id || genId(),
-          atualizadoEm: new Date().toLocaleString('pt-BR')
-        };
-        return { ok: true, avulso: true };
-      }
-
-      const processo = localizarProcessoBackup(ocorrencia.processo);
-      if (!processo) return { ok: false, motivo: `Processo ${ocorrencia.processo?.numero || ""} não encontrado.` };
-
-      if (source.tipo === "tabela") {
-        const produtoTabela = {
-          processo,
-          source: {
-            ...source,
-            headers: Array.isArray(source.headers) ? source.headers : []
-          }
-        };
-        if (!atualizarLinhaTabelaProduto(produtoTabela, dados)) {
-          return { ok: false, motivo: `Linha da ata não localizada no processo ${processo.numero || ""}.` };
-        }
-        return { ok: true, processo };
-      }
-
-      const base = processo?.[source.array]?.[source.index];
-      if (!base) return { ok: false, motivo: `Item original não localizado no processo ${processo.numero || ""}.` };
-
-      if (source.array === "resultadoItens" && source.divisaoIndex !== null && source.divisaoIndex !== undefined) {
-        base.codigo = dados.codigo;
-        base.descricao = dados.descricao;
-        base.unidade = dados.unidade;
-        const divisao = base.divisoesResultado?.[source.divisaoIndex];
-        if (!divisao) return { ok: false, motivo: `Divisão do resultado não localizada no processo ${processo.numero || ""}.` };
-        divisao.quantidade = dados.quantidade;
-        divisao.valorUnitario = dados.valorUnitario;
-        divisao.valorTotal = parseBRLToNumber(dados.valorTotal) || parseBRLToNumber(calcularTotal(dados.quantidade, dados.valorUnitario, "")) || 0;
-        divisao.situacao = dados.situacao;
-        divisao.fornecedor = dados.fornecedor;
-        if (dados.fornecedor && !divisao.razaoSocial) divisao.razaoSocial = dados.fornecedor;
-      } else {
-        atualizarCampoObjeto(base, dados);
-      }
-      return { ok: true, processo };
-    }
-
-    async function importarBackupProdutos(file) {
-      if (!file) return;
-      let backup;
-      try {
-        backup = JSON.parse(await file.text());
-      } catch (error) {
-        alert("Não foi possível ler o arquivo de backup.\n\nDetalhe: " + (error?.message || error));
-        return;
-      }
-
-      const ocorrencias = ocorrenciasDoBackup(backup);
-      if (!ocorrencias.length) {
-        alert("O arquivo não possui ocorrências de produtos para importar.");
-        return;
-      }
-
-      const confirmar = confirm(`Importar ${ocorrencias.length} ocorrência(s) de produto do backup corrigido?\n\nEssa ação atualizará produtos nos processos, atas e cadastros avulsos localizados pelo backup.`);
-      if (!confirmar) return;
-
-      const processosAlterados = new Map();
-      let alterouAvulsos = false;
-      const falhas = [];
-
-      ocorrencias.forEach((ocorrencia, index) => {
-        const resultado = aplicarBackupEmOcorrencia(ocorrencia);
-        if (resultado.ok && resultado.processo) {
-          processosAlterados.set(resultado.processo.id || resultado.processo.numero, resultado.processo);
-        } else if (resultado.ok && resultado.avulso) {
-          alterouAvulsos = true;
-        } else {
-          falhas.push(`#${index + 1}: ${resultado.motivo || "Falha desconhecida."}`);
-        }
-      });
-
-      try {
-        for (const processo of processosAlterados.values()) {
-          await salvarProcessoComProduto(processo);
-        }
-        if (alterouAvulsos) await salvarProdutosAvulsos(produtosAvulsos);
-        produtos = montarProdutos(processos);
-        render();
-        const msg = `Backup importado: ${ocorrencias.length - falhas.length} ocorrência(s) atualizada(s).`;
-        showToast(falhas.length ? `${msg} ${falhas.length} falha(s). Veja o console.` : msg);
-        if (falhas.length) {
-          console.warn('[PRODUTOS][BACKUP][FALHAS]', falhas);
-          alert(`${msg}\n\nAlgumas ocorrências não foram localizadas. Veja o console para a lista completa.`);
-        }
-      } catch (error) {
-        console.error('[PRODUTOS][BACKUP][IMPORTAR][ERRO]', error);
-        alert('Não foi possível salvar a importação do backup.\n\nDetalhe: ' + (error?.message || error));
-      }
-    }
-
     function opcoes(lista) {
       return [...new Set(lista.filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b), "pt-BR"));
     }
@@ -10442,11 +10220,8 @@ atualizarEtapasConcluidas();
               <div class="muted">Itens consolidados a partir dos processos cadastrados.</div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-              <button type="button" class="btn warning soft" id="produtos_export_backup">Exportar backup de produtos</button>
-              <button type="button" class="btn" id="produtos_import_backup">Importar backup corrigido</button>
               <button type="button" class="btn" id="produtos_reload">Atualizar produtos</button>
               <button type="button" class="btn primary" id="produto_new">+ Inserir Produto</button>
-              <input type="file" id="produtos_backup_file" accept=".json,application/json" hidden>
             </div>
           </header>
 
@@ -10618,14 +10393,6 @@ atualizarEtapasConcluidas();
         };
       });
       container.querySelector('#produtos_reload').onclick = carregar;
-      container.querySelector('#produtos_export_backup').onclick = exportarBackupProdutos;
-      const backupInput = container.querySelector('#produtos_backup_file');
-      container.querySelector('#produtos_import_backup').onclick = () => backupInput.click();
-      backupInput.addEventListener('change', async event => {
-        const file = event.target.files?.[0];
-        await importarBackupProdutos(file);
-        event.target.value = "";
-      });
       container.querySelector('#produto_new').onclick = () => abrirProdutoForm();
       container.querySelector('#produto_dlg_close').onclick = () => container.querySelector('#produto_dlg').close();
       container.querySelector('#produto_form_close').onclick = () => container.querySelector('#produto_form_dlg').close();
