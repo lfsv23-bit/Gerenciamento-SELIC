@@ -3794,8 +3794,10 @@ fileImportItem.addEventListener('change', async () => {
   if (!file) return;
   try {
     const texto = await file.text();
-    const importados = itensProcessoDoTxt(texto);
+    let importados = itensProcessoDoTxt(texto);
     if (!importados.length) return alert('Nenhum item encontrado no TXT selecionado.');
+    importados = await conciliarProdutosImportados(importados);
+    if (!importados) return showToast('Importação cancelada.');
     if (itensProcesso.length && !confirm('Substituir os itens atuais pelos itens importados do TXT?')) return;
     itensProcesso = importados;
     renderItens();
@@ -4119,6 +4121,130 @@ function parseItensEditalTxt(texto) {
       return celulas.map(cell => cell.replace(/\s+/g, ' ').trim());
     })
     .filter(row => row.some(cell => cell));
+}
+
+function codigoProdutoComparacao(value) {
+  return String(value || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+}
+
+function identidadeProdutoDiferente(a = {}, b = {}) {
+  return normalizarCadastro(a.descricao) !== normalizarCadastro(b.descricao)
+    || normalizarCadastro(a.unidade) !== normalizarCadastro(b.unidade);
+}
+
+function ocorrenciasProdutoNosProcessos(codigo) {
+  const chave = codigoProdutoComparacao(codigo);
+  if (!chave) return [];
+  const ocorrencias = [];
+  (Array.isArray(data) ? data : []).forEach(processo => {
+    ['itensProcesso', 'cotItens', 'resultadoItens'].forEach(array => {
+      (Array.isArray(processo[array]) ? processo[array] : []).forEach(item => {
+        if (codigoProdutoComparacao(item?.codigo) === chave) ocorrencias.push({ processo, item });
+      });
+    });
+  });
+  return ocorrencias;
+}
+
+function produtoExistentePorCodigo(codigo) {
+  const ocorrencias = ocorrenciasProdutoNosProcessos(codigo);
+  const item = ocorrencias.find(registro => registro.item?.descricao || registro.item?.unidade)?.item;
+  return item ? { codigo: item.codigo || codigo, descricao: item.descricao || '', unidade: item.unidade || '' } : null;
+}
+
+function escolherIdentidadeProduto(existente, importado) {
+  return new Promise(resolve => {
+    const dlg = document.createElement('dialog');
+    dlg.className = 'produto-conflito-dialog';
+    dlg.innerHTML = `
+      <form method="dialog" class="produto-conflito-shell">
+        <div class="modal-head">
+          <div><strong>Produto com código já cadastrado</strong><div class="muted">Confirme se os registros representam o mesmo produto.</div></div>
+          <button type="button" class="btn ghost" data-produto-conflito="cancelar">Fechar</button>
+        </div>
+        <div class="modal-body">
+          <div class="produto-conflito-comparacao">
+            <section><span>CADASTRADO</span><strong>${escHtml(existente.codigo || '')}</strong><div>${escHtml(existente.descricao || 'Sem descrição')}</div><small>Unidade: ${escHtml(existente.unidade || 'Não informada')}</small></section>
+            <section><span>IMPORTADO</span><strong>${escHtml(importado.codigo || '')}</strong><div>${escHtml(importado.descricao || 'Sem descrição')}</div><small>Unidade: ${escHtml(importado.unidade || 'Não informada')}</small></section>
+          </div>
+          <div class="produto-conflito-edicao">
+            <div class="field"><label>Descrição que será mantida</label><input class="input" data-conflito-descricao value="${escHtml(existente.descricao || importado.descricao || '')}"></div>
+            <div class="field"><label>Unidade que será mantida</label><input class="input" data-conflito-unidade value="${escHtml(existente.unidade || importado.unidade || '')}"></div>
+          </div>
+          <div class="muted" style="margin-top:10px">A escolha será aplicada aos vínculos existentes e ao item importado. Quantidade, valores e fornecedor não serão alterados.</div>
+        </div>
+        <div class="modal-actions produto-conflito-acoes">
+          <button type="button" class="btn" data-produto-conflito="separar">Não é o mesmo item</button>
+          <button type="button" class="btn" data-produto-conflito="existente">Usar cadastrado</button>
+          <button type="button" class="btn" data-produto-conflito="importado">Usar importado</button>
+          <button type="button" class="btn primary" data-produto-conflito="mesclar">Mesclar campos</button>
+        </div>
+      </form>`;
+    document.body.appendChild(dlg);
+    const concluir = resultado => {
+      dlg.close();
+      dlg.remove();
+      resolve(resultado);
+    };
+    dlg.addEventListener('cancel', event => { event.preventDefault(); concluir(null); }, { once: true });
+    dlg.querySelectorAll('[data-produto-conflito]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const acao = btn.dataset.produtoConflito;
+        if (acao === 'cancelar') return concluir(null);
+        if (acao === 'separar') {
+          const novoCodigo = prompt('Informe um código diferente para manter este item separado:', importado.codigo || '');
+          if (novoCodigo === null) return;
+          if (!codigoProdutoComparacao(novoCodigo) || codigoProdutoComparacao(novoCodigo) === codigoProdutoComparacao(existente.codigo)) {
+            alert('Informe um código diferente do produto já cadastrado.');
+            return;
+          }
+          return concluir({ codigo: novoCodigo.trim(), descricao: importado.descricao || '', unidade: importado.unidade || '', atualizarExistentes: false });
+        }
+        if (acao === 'existente') return concluir({ ...existente, atualizarExistentes: true });
+        if (acao === 'importado') return concluir({ codigo: existente.codigo || importado.codigo, descricao: importado.descricao || '', unidade: importado.unidade || '', atualizarExistentes: true });
+        concluir({
+          codigo: existente.codigo || importado.codigo,
+          descricao: dlg.querySelector('[data-conflito-descricao]').value.trim(),
+          unidade: dlg.querySelector('[data-conflito-unidade]').value.trim(),
+          atualizarExistentes: true
+        });
+      });
+    });
+    dlg.showModal();
+  });
+}
+
+async function conciliarProdutosImportados(importados) {
+  const lista = Array.isArray(importados) ? importados : [];
+  const decisoes = new Map();
+  const processosAlterados = new Map();
+  for (const item of lista) {
+    const chave = codigoProdutoComparacao(item?.codigo);
+    if (!chave) continue;
+    const existente = produtoExistentePorCodigo(item.codigo);
+    if (!existente || !identidadeProdutoDiferente(existente, item)) continue;
+    let decisao = decisoes.get(chave);
+    if (!decisao) {
+      decisao = await escolherIdentidadeProduto(existente, item);
+      if (!decisao) return null;
+      decisoes.set(chave, decisao);
+    }
+    item.codigo = decisao.codigo;
+    item.descricao = decisao.descricao;
+    item.unidade = decisao.unidade;
+    if (decisao.atualizarExistentes) {
+      ocorrenciasProdutoNosProcessos(existente.codigo).forEach(registro => {
+        registro.item.codigo = decisao.codigo;
+        registro.item.descricao = decisao.descricao;
+        registro.item.unidade = decisao.unidade;
+        processosAlterados.set(registro.processo.id || registro.processo.numero, registro.processo);
+      });
+    }
+  }
+  for (const processo of processosAlterados.values()) {
+    await persistirProcessoEmBancoOuBackup(processo, data);
+  }
+  return lista;
 }
 
 function indiceColunaItemProcesso(header, nomes) {
@@ -6454,8 +6580,10 @@ fileImportCotacaoTxt?.addEventListener('change', async () => {
   if (!file) return;
   try {
     const texto = await file.text();
-    const importados = parseCotacaoTxt(texto);
+    let importados = parseCotacaoTxt(texto);
     if (!importados.length) return alert('Nenhum item de cotação encontrado no TXT selecionado.');
+    importados = await conciliarProdutosImportados(importados);
+    if (!importados) return showToast('Importação cancelada.');
 
     const validacaoEtp = validarCotacaoContraEtp(importados);
     if (!validacaoEtp.ok) {
@@ -7308,11 +7436,13 @@ fileImportResultadoTxt?.addEventListener('change', async () => {
   if (!file) return;
   try {
     const texto = await file.text();
-    const importados = parseResultadoTxt(texto);
+    let importados = parseResultadoTxt(texto);
     if (!importados.length) {
       alert('Nenhum item foi encontrado no TXT do resultado.');
       return;
     }
+    importados = await conciliarProdutosImportados(importados);
+    if (!importados) return showToast('Importação cancelada.');
 
     const validacao = validarResultadoContraCotacao(importados);
     if (!validacao.ok) {

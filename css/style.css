@@ -2209,6 +2209,45 @@ h4 {
   border-radius: 10px;
   background: rgba(255,255,255,.12);
 }
+
+.produto-conflito-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .28);
+}
+.produto-conflito-shell { margin: 0; }
+.produto-conflito-comparacao {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.produto-conflito-comparacao section {
+  padding: 14px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.produto-conflito-comparacao section > span,
+.produto-conflito-comparacao small {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+}
+.produto-conflito-comparacao strong { display: block; margin: 4px 0 8px; }
+.produto-conflito-edicao {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(160px, 1fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+.produto-conflito-acoes { flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .produto-conflito-comparacao,
+  .produto-conflito-edicao { grid-template-columns: 1fr; }
+}
 .process-status-stack span {
   font-size: 12px;
   text-transform: uppercase;
