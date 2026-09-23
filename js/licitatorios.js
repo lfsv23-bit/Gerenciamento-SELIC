@@ -9823,8 +9823,8 @@ atualizarEtapasConcluidas();
 
     function itemDeObjeto(item = {}, contexto = {}) {
       const quantidade = item.quantidade || item.qtd || "";
-      const valorUnitario = item.valorUnitario || item.unitario || item.valor || "";
-      const valorTotal = item.valorTotal || item.total || "";
+      const valorUnitario = item.valorUnitario || item.resultadoUnitario || item.unitario || item.valor || "";
+      const valorTotal = item.valorTotal || item.resultadoTotal || item.total || "";
       return {
         id: `${contexto.processo?.id || contexto.processo?.numero || "proc"}-${contexto.origem || "item"}-${contexto.index}`,
         processo: contexto.processo,
@@ -10072,6 +10072,29 @@ atualizarEtapasConcluidas();
       return registro.ocorrencias.find(item => item.origem === fase) || null;
     }
 
+    function resumoFaseProduto(itens) {
+      let quantidade = 0;
+      let valorTotal = 0;
+      let quantidadeInformada = false;
+      let valorInformado = false;
+      itens.forEach(item => {
+        const qtd = parseBRLToNumber(item.quantidade);
+        if (qtd !== null) {
+          quantidade += qtd;
+          quantidadeInformada = true;
+        }
+        const totalDireto = parseBRLToNumber(item.valorTotal);
+        const totalCalculado = totalDireto !== null
+          ? totalDireto
+          : parseBRLToNumber(calcularTotal(item.quantidade, item.valorUnitario, ""));
+        if (totalCalculado !== null) {
+          valorTotal += totalCalculado;
+          valorInformado = true;
+        }
+      });
+      return { quantidade, valorTotal, quantidadeInformada, valorInformado };
+    }
+
     function renderFaseProduto(registro, fase, titulo) {
       const itens = registro.ocorrencias.filter(item => item.origem === fase);
       if (!itens.length) {
@@ -10082,6 +10105,7 @@ atualizarEtapasConcluidas();
           </div>
         `;
       }
+      const resumo = resumoFaseProduto(itens);
       return `
         <div class="produto-vinculo-fase">
           <span>${esc(titulo)}</span>
@@ -10092,6 +10116,11 @@ atualizarEtapasConcluidas();
               <small>Qtd.: ${esc(textoQuantidadeOuNaoInformado(item.quantidade))}${item.valorUnitario ? ` · Unit.: R$ ${esc(textoValor(item.valorUnitario))}` : ""}${item.fornecedor ? ` · ${esc(item.fornecedor)}` : ""}</small>
             </div>
           `).join("")}</div>
+          <div class="produto-vinculo-fase-total">
+            <span>Total da fase</span>
+            <strong>${resumo.valorInformado ? `R$ ${esc(formatBRLDisplay(resumo.valorTotal))}` : "Valor não informado"}</strong>
+            <small>Qtd. total: ${resumo.quantidadeInformada ? esc(textoQuantidadeOuNaoInformado(resumo.quantidade)) : "Quantidade não informada"}</small>
+          </div>
         </div>
       `;
     }
