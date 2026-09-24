@@ -10099,29 +10099,39 @@ atualizarEtapasConcluidas();
       const itens = registro.ocorrencias.filter(item => item.origem === fase);
       if (!itens.length) {
         return `
-          <div class="produto-vinculo-fase">
-            <span>${esc(titulo)}</span>
-            <div class="produto-vinculo-fase-empty">Sem informação nesta fase</div>
-          </div>
+          <details class="produto-vinculo-fase produto-vinculo-fase-vazia">
+            <summary class="produto-vinculo-fase-barra">
+              <span class="produto-vinculo-fase-titulo">${esc(titulo)}</span>
+              <span class="produto-vinculo-fase-resumo">Sem informação nesta fase</span>
+              <span class="produto-vinculo-fase-seta" aria-hidden="true"></span>
+            </summary>
+          </details>
         `;
       }
       const resumo = resumoFaseProduto(itens);
       return `
-        <div class="produto-vinculo-fase">
-          <span>${esc(titulo)}</span>
-          <div class="produto-vinculo-fase-items">${itens.map((item, index) => `
-            <div class="produto-vinculo-fase-line">
-              ${itens.length > 1 ? `<span class="produto-vinculo-item-numero">${index + 1}</span>` : ""}
-              <strong>${esc(textoValorOuNaoInformado(item.valorTotal || calcularTotal(item.quantidade, item.valorUnitario, "")))}</strong>
-              <small>Qtd.: ${esc(textoQuantidadeOuNaoInformado(item.quantidade))}${item.valorUnitario ? ` · Unit.: R$ ${esc(textoValor(item.valorUnitario))}` : ""}${item.fornecedor ? ` · ${esc(item.fornecedor)}` : ""}</small>
+        <details class="produto-vinculo-fase">
+          <summary class="produto-vinculo-fase-barra">
+            <span class="produto-vinculo-fase-titulo">${esc(titulo)}</span>
+            <span class="produto-vinculo-fase-resumo">${resumo.valorInformado ? `R$ ${esc(formatBRLDisplay(resumo.valorTotal))}` : "Valor não informado"}</span>
+            <span class="produto-vinculo-fase-quantidade">Qtd.: ${resumo.quantidadeInformada ? esc(textoQuantidadeOuNaoInformado(resumo.quantidade)) : "Não informada"}</span>
+            <span class="produto-vinculo-fase-seta" aria-hidden="true"></span>
+          </summary>
+          <div class="produto-vinculo-fase-conteudo">
+            <div class="produto-vinculo-fase-items">${itens.map((item, index) => `
+              <div class="produto-vinculo-fase-line">
+                ${itens.length > 1 ? `<span class="produto-vinculo-item-numero">${index + 1}</span>` : ""}
+                <strong>${esc(textoValorOuNaoInformado(item.valorTotal || calcularTotal(item.quantidade, item.valorUnitario, "")))}</strong>
+                <small>Qtd.: ${esc(textoQuantidadeOuNaoInformado(item.quantidade))}${item.valorUnitario ? ` · Unit.: R$ ${esc(textoValor(item.valorUnitario))}` : ""}${item.fornecedor ? ` · ${esc(item.fornecedor)}` : ""}</small>
+              </div>
+            `).join("")}</div>
+            <div class="produto-vinculo-fase-total">
+              <span>Total da fase</span>
+              <strong>${resumo.valorInformado ? `R$ ${esc(formatBRLDisplay(resumo.valorTotal))}` : "Valor não informado"}</strong>
+              <small>Qtd. total: ${resumo.quantidadeInformada ? esc(textoQuantidadeOuNaoInformado(resumo.quantidade)) : "Quantidade não informada"}</small>
             </div>
-          `).join("")}</div>
-          <div class="produto-vinculo-fase-total">
-            <span>Total da fase</span>
-            <strong>${resumo.valorInformado ? `R$ ${esc(formatBRLDisplay(resumo.valorTotal))}` : "Valor não informado"}</strong>
-            <small>Qtd. total: ${resumo.quantidadeInformada ? esc(textoQuantidadeOuNaoInformado(resumo.quantidade)) : "Quantidade não informada"}</small>
           </div>
-        </div>
+        </details>
       `;
     }
 

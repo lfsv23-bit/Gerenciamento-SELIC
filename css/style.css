@@ -2260,9 +2260,73 @@ h4 {
   color: #0f172a;
   font-size: 14px;
 }
+.produto-vinculo-fase {
+  display: block;
+  padding: 0;
+}
+.produto-vinculo-fase-barra {
+  display: grid;
+  grid-template-columns: 170px minmax(150px, 1fr) minmax(120px, auto) 18px;
+  gap: 12px;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.produto-vinculo-fase-barra::-webkit-details-marker { display: none; }
+.produto-vinculo-fase-barra:hover { background: #f8fafc; }
+.produto-vinculo-fase-titulo,
+.produto-vinculo-fase-resumo,
+.produto-vinculo-fase-quantidade {
+  margin: 0;
+  padding: 0;
+}
+.produto-vinculo-fase .produto-vinculo-fase-titulo {
+  color: #475569;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+.produto-vinculo-fase .produto-vinculo-fase-resumo {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: none;
+}
+.produto-vinculo-fase .produto-vinculo-fase-quantidade {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+  text-transform: none;
+}
+.produto-vinculo-fase-seta {
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid #64748b;
+  border-bottom: 2px solid #64748b;
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform .18s ease;
+}
+.produto-vinculo-fase[open] .produto-vinculo-fase-seta {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+.produto-vinculo-fase-conteudo {
+  padding: 0 12px 12px 182px;
+  border-top: 1px solid #eef2f7;
+}
+.produto-vinculo-fase-vazia .produto-vinculo-fase-barra { cursor: default; }
+.produto-vinculo-fase-vazia .produto-vinculo-fase-seta { visibility: hidden; }
 @media (max-width: 640px) {
   .produto-conflito-comparacao,
   .produto-conflito-edicao { grid-template-columns: 1fr; }
+  .produto-vinculo-fase-barra { grid-template-columns: 1fr 18px; gap: 4px 10px; }
+  .produto-vinculo-fase-resumo,
+  .produto-vinculo-fase-quantidade { grid-column: 1; text-align: left; }
+  .produto-vinculo-fase-seta { grid-column: 2; grid-row: 1 / span 3; }
+  .produto-vinculo-fase-conteudo { padding: 0 12px 12px; }
 }
 .process-status-stack span {
   font-size: 12px;
