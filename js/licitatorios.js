@@ -4680,6 +4680,7 @@ maximumFractionDigits:2
       "AVISO DE RESULTADO",
       "AVISO DE HOMOLOGAÇÃO / ADJUDICAÇÃO",
       "AVISO DE SUSPENSÃO",
+      "REABERTURA DE LICITAÇÃO",
       "AUTORIZAÇÃO DA AUTORIDADE COMPETENTE",
       "RETIFICAÇÃO"
     ];
