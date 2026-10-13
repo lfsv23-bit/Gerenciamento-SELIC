@@ -603,6 +603,14 @@
     function getAllByNumero(numero) {
       return data.filter(t => String(t.numero).trim().toLowerCase() === String(numero).trim().toLowerCase());
     }
+
+    function encontrarProcessoCarregado(numero) {
+      const procurado = String(numero || '').replace(/\s+/g, '').toLocaleLowerCase('pt-BR');
+      if (!procurado) return null;
+      return carregarProcessosLicitatorios().find(processo =>
+        String(processo?.numero || '').replace(/\s+/g, '').toLocaleLowerCase('pt-BR') === procurado
+      ) || null;
+    }
     function getMaxEntrada(numero) {
       const list = getAllByNumero(numero);
       if (!list.length) return 0;
@@ -1012,12 +1020,14 @@
       dlgForm.showModal();
     }
 
-    function openBusca() {
+    async function openBusca() {
       currentAction = 'new';
       buscaInput.value = '';
-      buscaLista.innerHTML = '';
+      buscaLista.innerHTML = '<div style="padding:10px;color:var(--muted)">Atualizando processos...</div>';
       dlgBusca.showModal();
-      setTimeout(() => buscaInput.focus(), 60);
+      await carregarProcessosSupabaseParaTramites();
+      buscaLista.innerHTML = '';
+      buscaInput.focus();
     }
 
     function renderResultados(query) {
@@ -1047,9 +1057,9 @@
     }
 
     function selecionarProcesso(numero) {
-      const proc = window.getProcessoLicitatorioPorNumero?.(numero);
+      const proc = encontrarProcessoCarregado(numero);
       if (!proc) {
-        alert('⚠️ Este processo ainda não foi cadastrado em Processos Licitatórios.');
+        alert('Este processo não está disponível na lista atual. Feche a busca e abra novamente para atualizar os processos.');
         dlgBusca.close();
         return;
       }
@@ -1378,10 +1388,10 @@
       if (!item.numero) return alert('Número do processo é obrigatório.');
       if (!item.dataEntrada) return alert('Data de entrada é obrigatória.');
 
-      // garante que existe no módulo licitatório
-      const proc = window.getProcessoLicitatorioPorNumero?.(item.numero);
+      // Valida contra a mesma fonte atualizada usada pela busca de processos.
+      const proc = encontrarProcessoCarregado(item.numero);
       if (!proc) {
-        alert('⚠️ Processo não encontrado nos Processos Licitatórios.');
+        alert('Processo não encontrado na lista atual de Processos Licitatórios. Feche o formulário e abra a busca novamente.');
         return;
       }
 
