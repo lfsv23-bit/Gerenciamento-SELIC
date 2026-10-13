@@ -113,6 +113,17 @@
     }
     return iso;
   }
+  function statusTramiteTexto(value) {
+    const status = String(value || '').trim().toLocaleUpperCase('pt-BR');
+    if (status === 'AGUARDANDO' || status === 'AGUARDANDO DISTRIBUICAO' || status === 'AGUARDANDO DISTRIBUIÇÃO') {
+      return 'AGUARDANDO DISTRIBUIÇÃO';
+    }
+    if (status === 'EM ANDAMENTO' || status === 'COM RESPONSAVEL' || status === 'COM RESPONSÁVEL') {
+      return 'COM RESPONSÁVEL';
+    }
+    if (status === 'CONCLUIDO' || status === 'CONCLUÍDO') return 'CONCLUÍDO';
+    return status || 'AGUARDANDO DISTRIBUIÇÃO';
+  }
   function diasNoSetor(dataEntrada) {
     if (!dataEntrada) return 0;
     const d1 = new Date(dataEntrada);
@@ -171,8 +182,12 @@
         <div class="tra-panel" style="border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px">
           <div style="display:flex;gap:18px;align-items:center;width:100%;flex-wrap:wrap">
             <div class="tra-indicator">
-              <div class="label">📄 Pendentes</div>
+              <div class="label">Aguardando distribuição</div>
               <div id="tra_ind_pendentes" class="value">0</div>
+            </div>
+            <div class="tra-indicator">
+              <div class="label">Com responsável</div>
+              <div id="tra_ind_distribuidos" class="value">0</div>
             </div>
             <div class="tra-indicator">
               <div class="label">⏱️ Acima do limite</div>
@@ -195,8 +210,8 @@
         <div class="tra-filters">
           <select id="tra_filter_status" class="select" style="min-width:160px">
             <option value="todos">Status: Todos</option>
-            <option value="AGUARDANDO">AGUARDANDO</option>
-            <option value="EM ANDAMENTO">EM ANDAMENTO</option>
+            <option value="AGUARDANDO DISTRIBUIÇÃO">AGUARDANDO DISTRIBUIÇÃO</option>
+            <option value="COM RESPONSÁVEL">COM RESPONSÁVEL</option>
             <option value="CONCLUÍDO">CONCLUÍDO</option>
           </select>
 
@@ -233,6 +248,7 @@
             <option>EMISSÃO DE PLANILHA</option>
             <option>MANIFESTAÇÃO DE INTERESSE</option>
             <option>MINUTA DE EDITAL</option>
+            <option>PROCESSO RECEBIDO</option>
             <option>PARECER CONCLUSIVO</option>
             <option>PARECER INICIAL</option>
             <option>PROVIDÊNCIAS</option>
@@ -246,15 +262,16 @@
           </select>
 
           <div style="margin-left:auto;display:flex;gap:8px">
-            <button id="filtro_pendentes" class="btn primary">Pendentes</button>
-            <button id="filtro_concluidos" class="btn">Concluídos</button>
+            <button id="filtro_pendentes" class="btn primary">Aguardando distribuição</button>
+            <button id="filtro_distribuidos" class="btn">Com responsável</button>
+            <button id="filtro_concluidos" class="btn">Atividades concluídas</button>
             <button id="filtro_todos" class="btn">Todos</button>
           </div>
         </div>
 
         <div class="card" style="margin-bottom:12px;overflow:auto">
           <div style="margin-bottom:6px;font-size:12px;color:var(--muted)">
-            🟡 Aguardando • 🔵 Em Andamento • 🟢 Concluído
+            🟡 Aguardando distribuição • 🔵 Com responsável • 🟢 Atividade concluída
           </div>
           <table id="tra_tbl">
             <thead>
@@ -339,6 +356,7 @@
                   <option>EMISSÃO DE PLANILHA</option>
                   <option>MANIFESTAÇÃO DE INTERESSE</option>
                   <option>MINUTA DE EDITAL</option>
+                  <option>PROCESSO RECEBIDO</option>
                   <option>PARECER CONCLUSIVO</option>
                   <option>PARECER INICIAL</option>
                   <option>PROVIDÊNCIAS</option>
@@ -372,8 +390,8 @@
               <div class="field">
                 <label>STATUS</label>
                 <select id="tra_status" class="select">
-                  <option>AGUARDANDO</option>
-                  <option>EM ANDAMENTO</option>
+                  <option>AGUARDANDO DISTRIBUIÇÃO</option>
+                  <option>COM RESPONSÁVEL</option>
                   <option>CONCLUÍDO</option>
                 </select>
               </div>
@@ -491,6 +509,7 @@
 
     // painel & filtros refs
     const indPendentes = container.querySelector('#tra_ind_pendentes');
+    const indDistribuidos = container.querySelector('#tra_ind_distribuidos');
     const indAcima = container.querySelector('#tra_ind_acima');
     const selLimitDays = container.querySelector('#tra_limit_days');
     const selStatus = container.querySelector('#tra_filter_status');
@@ -500,6 +519,7 @@
     const selResponsavel = container.querySelector('#tra_filter_responsavel');
 
     const btnFiltroPendentes = container.querySelector('#filtro_pendentes');
+    const btnFiltroDistribuidos = container.querySelector('#filtro_distribuidos');
     const btnFiltroConcluidos = container.querySelector('#filtro_concluidos');
     const btnFiltroTodos = container.querySelector('#filtro_todos');
 
@@ -533,6 +553,11 @@
     const dataPrimeira = entrada1[0].dataEntrada;
 
     tramites.forEach(t => {
+      const statusNormalizado = statusTramiteTexto(t.status);
+      if (t.status !== statusNormalizado) {
+        t.status = statusNormalizado;
+        alterou = true;
+      }
       if (!t.dataPrimeiraEntrada) {
         t.dataPrimeiraEntrada = dataPrimeira;
         alterou = true;
@@ -883,10 +908,11 @@
 
       // Aplica filtros (pendentes / concluídos) + novos filtros do painel
       filtered = maisRecentes.filter(r => {
-        const status = (r.status || '').toUpperCase();
+        const status = statusTramiteTexto(r.status);
 
         // filtro por botão (pendentes / concluidos / todos)
-        if (filtroAtual === 'pendentes' && status === 'CONCLUÍDO') return false;
+        if (filtroAtual === 'pendentes' && status !== 'AGUARDANDO DISTRIBUIÇÃO') return false;
+        if (filtroAtual === 'distribuidos' && status !== 'COM RESPONSÁVEL') return false;
         if (filtroAtual === 'concluidos' && status !== 'CONCLUÍDO') return false;
 
         // filtro por search
@@ -897,7 +923,7 @@
 
         // filtro Status (select)
         if (statusFilter && statusFilter !== 'todos') {
-          if (String(status).toUpperCase() !== String(statusFilter).toUpperCase()) return false;
+          if (status !== statusTramiteTexto(statusFilter)) return false;
         }
 
         // filtro Tipo de Trâmite
@@ -924,11 +950,8 @@
       });
 
       // atualizar indicadores (INDICADORES FILTRADOS)
-      const pendentesCount = filtered.reduce((acc, cur) => {
-        const st = (cur.status || '').toUpperCase();
-        if (st === 'AGUARDANDO' || st === 'EM ANDAMENTO') return acc + 1;
-        return acc;
-      }, 0);
+      const pendentesCount = maisRecentes.filter(cur => statusTramiteTexto(cur.status) === 'AGUARDANDO DISTRIBUIÇÃO').length;
+      const distribuidosCount = maisRecentes.filter(cur => statusTramiteTexto(cur.status) === 'COM RESPONSÁVEL').length;
 
       const acimaCount = filtered.reduce((acc, cur) => {
         const dias = diasNoSetor(cur.dataEntrada);
@@ -937,14 +960,15 @@
       }, 0);
 
       indPendentes.textContent = pendentesCount;
+      indDistribuidos.textContent = distribuidosCount;
       indAcima.textContent = acimaCount;
 
       // Renderiza APENAS o trâmite mais recente de cada processo (da entrada atual)
       filtered.forEach((r) => {
-        const status = (r.status || '').toString().toUpperCase();
+        const status = statusTramiteTexto(r.status);
         const statusColor =
-          status === 'AGUARDANDO' ? 'status-aguardando' :
-          status === 'EM ANDAMENTO' ? 'status-andamento' :
+          status === 'AGUARDANDO DISTRIBUIÇÃO' ? 'status-aguardando' :
+          status === 'COM RESPONSÁVEL' ? 'status-andamento' :
           status === 'CONCLUÍDO' ? 'status-concluido' : '';
 
         const entradaDisplay = Number(r.entrada || 0) || 1;
@@ -963,12 +987,13 @@
 <td>${r.objeto || ''}</td>
           <td>${r.responsavel || ''}</td>
           <td>${tipoTramiteTexto(r.tipoTramite)}</td>
-          <td><span class="status ${statusColor}">${r.status || ''}</span></td>
+          <td><span class="status ${statusColor}">${status}</span></td>
           <td>${r.destino || ''}</td>
           <td style="display:flex;gap:6px;align-items:center">
             <button class="btn btn-edit" data-edit="${r.id}">Editar</button>
-            <button class="btn btn-tramitar" data-tramitar="${r.id}">Tramitar</button>
-            <button class="btn btn-finalizar" data-finalizar="${r.id}">Finalizar</button>
+            ${status === 'AGUARDANDO DISTRIBUIÇÃO' ? `<button class="btn btn-tramitar" data-tramitar="${r.id}">Distribuir</button>` : ''}
+            ${status === 'COM RESPONSÁVEL' ? `<button class="btn btn-tramitar" data-tramitar="${r.id}">Redistribuir</button>` : ''}
+            ${status === 'COM RESPONSÁVEL' ? `<button class="btn btn-finalizar" data-finalizar="${r.id}">Concluir atividade</button>` : ''}
             ${showNovaEntrada ? `<button class="btn btn-novaentrada" data-novaentrada="${r.numero}" title="Nova Entrada">Nova Entrada</button>` : ''}
           </td>
         `;
@@ -1083,6 +1108,10 @@
       fld.entradaDisplay.value = entradaParaUsar;
 
       fld.dataEntrada.value = new Date().toISOString().slice(0, 10);
+      fld.motivo.value = 'PROCESSO RECEBIDO';
+      fld.responsavel.value = '';
+      fld.status.value = 'AGUARDANDO DISTRIBUIÇÃO';
+      fld.status.disabled = true;
       fld.deleteBtn.style.display = 'none';
       container.querySelector('#tra_title').textContent = `Novo trâmite – ${proc.numero || ''}`;
       fld.status.disabled = false;
@@ -1103,9 +1132,10 @@
       fld.entrada.value = maxEntrada || (item.entrada || 1);
       fld.entradaDisplay.value = fld.entrada.value;
       fld.idx.value = ''; // garante criação de novo registro
-      container.querySelector('#tra_title').textContent = `Tramitar – ${item.numero || ''}`;
+      container.querySelector('#tra_title').textContent = `${statusTramiteTexto(item.status) === 'COM RESPONSÁVEL' ? 'Redistribuir' : 'Distribuir'} – ${item.numero || ''}`;
       fld.deleteBtn.style.display = 'none';
-      fld.status.disabled = false; // usuário escolhe manualmente
+      fld.status.value = 'COM RESPONSÁVEL';
+      fld.status.disabled = true;
       dlgForm.showModal();
       setTimeout(() => fld.motivo.focus(), 60);
     }
@@ -1122,7 +1152,7 @@
       fld.entrada.value = maxEntrada || (item.entrada || 1);
       fld.entradaDisplay.value = fld.entrada.value;
       fld.idx.value = ''; // garantir criação de novo registro
-      container.querySelector('#tra_title').textContent = `Finalizar – ${item.numero || ''}`;
+      container.querySelector('#tra_title').textContent = `Concluir atividade – ${item.numero || ''}`;
       fld.deleteBtn.style.display = 'none';
       fld.status.value = 'CONCLUÍDO';
       fld.status.disabled = true;
@@ -1135,7 +1165,7 @@
       const latest = getLatestForNumero(numero);
       if (!latest) return alert('Processo não encontrado.');
       if (String(latest.status || '').toUpperCase() !== 'CONCLUÍDO') {
-        return alert('Só é possível criar nova entrada quando o processo estiver finalizado.');
+        return alert('Só é possível criar uma nova entrada depois que a atividade anterior do setor for concluída.');
       }
 
       const maxEntrada = getMaxEntrada(numero);
@@ -1144,6 +1174,7 @@
       // criar um registro base (mas não salvar ainda: o salvamento acontece no onSave quando o usuário clicar salvar)
       currentAction = 'novaEntrada';
       clearForm();
+      currentAction = 'novaEntrada';
       fld.idx.value = ''; // garantir novo
       fld.numero.value = latest.numero || numero;
       fld.secretaria.value = latest.secretaria || '';
@@ -1153,9 +1184,10 @@
       fld.dataEntrada.value = new Date().toISOString().slice(0, 10);
       fld.deleteBtn.style.display = 'none';
       container.querySelector('#tra_title').textContent = `Nova Entrada ${novaEntrada} – ${numero}`;
-      // status livre (o usuário pode escolher), default AGUARDANDO
-      fld.status.disabled = false;
-      fld.status.value = 'AGUARDANDO';
+      fld.motivo.value = 'PROCESSO RECEBIDO';
+      fld.responsavel.value = '';
+      fld.status.value = 'AGUARDANDO DISTRIBUIÇÃO';
+      fld.status.disabled = true;
       dlgForm.showModal();
       setTimeout(() => fld.motivo.focus(), 60);
     }
@@ -1171,7 +1203,7 @@
       fld.dataEntrada.value = '';
       fld.motivo.value = '';
       fld.responsavel.value = '';
-      fld.status.value = 'AGUARDANDO';
+      fld.status.value = 'AGUARDANDO DISTRIBUIÇÃO';
       fld.tipoTramite.value = 'INTERNO';
       atualizarDestinosPorTipo();
       fld.destino.value = '';
@@ -1194,7 +1226,7 @@
       fld.dataEntrada.value = item.dataEntrada && item.dataEntrada.includes('-') ? item.dataEntrada.slice(0,10) : item.dataEntrada;
       fld.motivo.value = item.motivo || '';
       fld.responsavel.value = item.responsavel || '';
-      fld.status.value = item.status || 'AGUARDANDO';
+      fld.status.value = statusTramiteTexto(item.status);
       fld.tipoTramite.value = tipoTramiteTexto(item.tipoTramite);
       atualizarDestinosPorTipo(item.destino || '');
       fld.destino.value = item.destino || '';
@@ -1233,6 +1265,7 @@
 
     // Filtros de status (botões rápidos)
     btnFiltroPendentes.addEventListener('click', () => { filtroAtual = 'pendentes'; renderTable(); });
+    btnFiltroDistribuidos.addEventListener('click', () => { filtroAtual = 'distribuidos'; renderTable(); });
     btnFiltroConcluidos.addEventListener('click', () => { filtroAtual = 'concluidos'; renderTable(); });
     btnFiltroTodos.addEventListener('click', () => { filtroAtual = 'todos'; renderTable(); });
 
@@ -1378,7 +1411,7 @@
         dataEntrada: fld.dataEntrada.value.trim(),
         motivo: fld.motivo.value.trim(),
         responsavel: fld.responsavel.value.trim(),
-        status: fld.status.value.trim(),
+        status: statusTramiteTexto(fld.status.value),
         tipoTramite: tipoTramiteTexto(fld.tipoTramite.value),
         destino: fld.destino.value.trim(),
         obs: fld.obs.value.trim()
@@ -1387,6 +1420,9 @@
       // validações básicas
       if (!item.numero) return alert('Número do processo é obrigatório.');
       if (!item.dataEntrada) return alert('Data de entrada é obrigatória.');
+      if (item.status === 'COM RESPONSÁVEL' && !item.responsavel) {
+        return alert('Selecione o responsável antes de distribuir o processo.');
+      }
 
       // Valida contra a mesma fonte atualizada usada pela busca de processos.
       const proc = encontrarProcessoCarregado(item.numero);
@@ -1395,14 +1431,14 @@
         return;
       }
 
-      // ao criar novo trâmite (currentAction !== 'edit') verificar regra de "não permitir novo trâmite se já existe AGUARDANDO/EM ANDAMENTO"
+      // Evita abrir outro recebimento enquanto a atividade atual ainda está no setor.
       const tramitesMesmoNumero = data.filter(t =>
         String(t.numero).trim().toLowerCase() === String(item.numero).trim().toLowerCase()
       );
 
       const existePendente = tramitesMesmoNumero.some(t =>
-        String(t.status).toUpperCase() === 'AGUARDANDO' ||
-        String(t.status).toUpperCase() === 'EM ANDAMENTO'
+        statusTramiteTexto(t.status) === 'AGUARDANDO DISTRIBUIÇÃO' ||
+        statusTramiteTexto(t.status) === 'COM RESPONSÁVEL'
       );
 
       // Regra:
@@ -1424,12 +1460,12 @@
                 t => Number(t.entrada || 0) === (maxEntrada || 1)
             );
             const existePendenteNaEntradaAtual = tramitesNaEntradaAtual.some(t =>
-                String(t.status).toUpperCase() === 'AGUARDANDO' ||
-                String(t.status).toUpperCase() === 'EM ANDAMENTO'
+                statusTramiteTexto(t.status) === 'AGUARDANDO DISTRIBUIÇÃO' ||
+                statusTramiteTexto(t.status) === 'COM RESPONSÁVEL'
             );
 
             if (existePendenteNaEntradaAtual) {
-                alert(`⚠️ Já existe um trâmite em andamento ou aguardando para o processo ${item.numero} na entrada atual.\nConclua o trâmite atual antes de abrir um novo.`);
+                alert(`Já existe uma atividade aguardando distribuição ou com responsável para o processo ${item.numero}.\nConclua a atividade atual antes de abrir outra entrada.`);
                 return;
             }
         }
@@ -1500,7 +1536,7 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
       renderTable();
       dlgForm.close();
       fld.status.disabled = false;
-      showToast(currentAction === 'finalizar' ? 'Trâmite finalizado com sucesso!' : 'Trâmite salvo com sucesso!');
+      showToast(currentAction === 'finalizar' ? 'Atividade do setor concluída com sucesso!' : 'Trâmite salvo com sucesso!');
 
       // resetar action
       currentAction = 'new';
