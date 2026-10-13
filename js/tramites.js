@@ -3,6 +3,8 @@
 (() => {
   const STORAGE_KEY = 'tramitesProcessos';
   const PROCESSOS_STORAGE_KEY = 'processosLicitatorios';
+  const OPCOES_STORAGE_KEY = 'tramitesInternosOpcoes';
+  const OPCOES_SETTING_KEY = 'tramites_internos_opcoes';
   let tramitesInternosCache = [];
   let processosCache = [];
 
@@ -68,6 +70,37 @@
     }
     tramitesInternosCache = loadData();
     return tramitesInternosCache;
+  }
+  async function carregarOpcoesTramites() {
+    const fallback = { motivos: [], responsaveis: [] };
+    if (window.isSupabaseConfigured?.() && window.AppDatabase?.obterAppSetting) {
+      try {
+        const valor = await window.AppDatabase.obterAppSetting(OPCOES_SETTING_KEY, fallback);
+        return {
+          motivos: Array.isArray(valor?.motivos) ? valor.motivos : [],
+          responsaveis: Array.isArray(valor?.responsaveis) ? valor.responsaveis : []
+        };
+      } catch (error) {
+        console.error('[SUPABASE][app_settings][TRAMITES_OPCOES][SELECT][ERRO]', error);
+        return fallback;
+      }
+    }
+    try {
+      const valor = JSON.parse(localStorage.getItem(OPCOES_STORAGE_KEY) || '{}');
+      return {
+        motivos: Array.isArray(valor?.motivos) ? valor.motivos : [],
+        responsaveis: Array.isArray(valor?.responsaveis) ? valor.responsaveis : []
+      };
+    } catch {
+      return fallback;
+    }
+  }
+  async function salvarOpcoesTramites(opcoes) {
+    if (window.isSupabaseConfigured?.() && window.AppDatabase?.salvarAppSetting) {
+      await window.AppDatabase.salvarAppSetting(OPCOES_SETTING_KEY, opcoes);
+      return;
+    }
+    localStorage.setItem(OPCOES_STORAGE_KEY, JSON.stringify(opcoes));
   }
   function genId() {
     return String(Date.now()) + Math.floor(Math.random() * 1000);
@@ -292,7 +325,8 @@
 
               <div class="field">
                 <label>MOTIVO</label>
-                <select id="tra_motivo" class="select">
+                <div style="display:flex;gap:8px;align-items:center">
+                <select id="tra_motivo" class="select" style="flex:1">
                   <option value="">Selecione…</option>
                   <option>AUTORIZAÇÃO DE CONSUMO DA ATA</option>
                   <option>CADASTRO DE LICITAÇÃO</option>
@@ -311,11 +345,28 @@
                   <option>PUBLICAÇÃO</option>
                   <option>RESERVA ORÇAMENTÁRIA</option>
                 </select>
+                  <button id="tra_motivo_novo" type="button" class="btn">Novo</button>
+                </div>
+                <div id="tra_motivo_novo_box" style="display:none;gap:8px;margin-top:8px">
+                  <input id="tra_motivo_novo_texto" class="input" placeholder="Digite o novo motivo" style="flex:1">
+                  <button id="tra_motivo_novo_salvar" type="button" class="btn primary">Adicionar</button>
+                  <button id="tra_motivo_novo_cancelar" type="button" class="btn">Cancelar</button>
+                </div>
               </div>
 
               <div class="field">
                 <label>RESPONSÁVEL</label>
-                <input id="tra_responsavel" class="input">
+                <div style="display:flex;gap:8px;align-items:center">
+                  <select id="tra_responsavel" class="select" style="flex:1">
+                    <option value="">Selecione…</option>
+                  </select>
+                  <button id="tra_responsavel_novo" type="button" class="btn">Novo</button>
+                </div>
+                <div id="tra_responsavel_novo_box" style="display:none;gap:8px;margin-top:8px">
+                  <input id="tra_responsavel_novo_texto" class="input" placeholder="Digite o nome do responsável" style="flex:1">
+                  <button id="tra_responsavel_novo_salvar" type="button" class="btn primary">Adicionar</button>
+                  <button id="tra_responsavel_novo_cancelar" type="button" class="btn">Cancelar</button>
+                </div>
               </div>
 
               <div class="field">
@@ -416,6 +467,22 @@
       saveBtn: container.querySelector('#tra_save'),
       closeBtn: container.querySelector('#tra_close')
     };
+    const cadastroRapido = {
+      motivo: {
+        abrir: container.querySelector('#tra_motivo_novo'),
+        box: container.querySelector('#tra_motivo_novo_box'),
+        input: container.querySelector('#tra_motivo_novo_texto'),
+        salvar: container.querySelector('#tra_motivo_novo_salvar'),
+        cancelar: container.querySelector('#tra_motivo_novo_cancelar')
+      },
+      responsavel: {
+        abrir: container.querySelector('#tra_responsavel_novo'),
+        box: container.querySelector('#tra_responsavel_novo_box'),
+        input: container.querySelector('#tra_responsavel_novo_texto'),
+        salvar: container.querySelector('#tra_responsavel_novo_salvar'),
+        cancelar: container.querySelector('#tra_responsavel_novo_cancelar')
+      }
+    };
 
     // visualização modal refs
     const dlgView = container.querySelector('#tra_view');
@@ -439,6 +506,10 @@
     /* ---------- Estado ---------- */
     await carregarProcessosSupabaseParaTramites();
     let data = await carregarTramitesInternosSupabase();
+    const opcoesTramites = await carregarOpcoesTramites();
+    const motivosPadrao = Array.from(fld.motivo.options)
+      .map(option => option.value.trim())
+      .filter(Boolean);
     // 🔄 MIGRAÇÃO: preencher dataPrimeiraEntrada para registros antigos
 (async function migrarDatasAntigas() {
   let alterou = false;
@@ -1097,6 +1168,8 @@
       fld.obs.value = '';
       fld.deleteBtn.style.display = 'none';
       fld.status.disabled = false;
+      cadastroRapido.motivo.box.style.display = 'none';
+      cadastroRapido.responsavel.box.style.display = 'none';
       currentAction = 'new';
     }
 
@@ -1183,13 +1256,49 @@
       atualizarDestinosPorTipo();
     });
 
+    function valoresUnicosOrdenados(valores) {
+      const mapa = new Map();
+      valores.forEach(valor => {
+        const texto = String(valor || '').replace(/\s+/g, ' ').trim();
+        const chave = texto.toLocaleUpperCase('pt-BR');
+        if (texto && !mapa.has(chave)) mapa.set(chave, texto);
+      });
+      return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }
+
+    function preencherSelect(select, valores, selecionado = '') {
+      select.innerHTML = '<option value="">Selecione…</option>';
+      valores.forEach(valor => {
+        const option = document.createElement('option');
+        option.value = valor;
+        option.textContent = valor;
+        select.appendChild(option);
+      });
+      if (selecionado && !valores.some(valor => valor === selecionado)) {
+        const option = document.createElement('option');
+        option.value = selecionado;
+        option.textContent = selecionado;
+        select.appendChild(option);
+      }
+      select.value = selecionado;
+    }
+
+    function populateMotivoFormOptions(selecionado = fld.motivo.value) {
+      const motivosUsados = (data || []).map(item => item.motivo);
+      preencherSelect(fld.motivo, valoresUnicosOrdenados([...motivosPadrao, ...opcoesTramites.motivos, ...motivosUsados]), selecionado);
+    }
+
     /* ---------- Inicial render ---------- */
     // popular select Responsável com valores únicos de data
     function populateResponsavelOptions() {
-      const nomes = Array.from(new Set((data || []).map(x => (x.responsavel || '').trim()).filter(s => s)));
+      const nomes = valoresUnicosOrdenados([
+        ...opcoesTramites.responsaveis,
+        ...(data || []).map(x => x.responsavel)
+      ]);
+      const selecionado = fld.responsavel.value;
+      preencherSelect(fld.responsavel, nomes, selecionado);
       // limpar existentes (exceto a opção "todos")
       selResponsavel.querySelectorAll('option:not([value="todos"])').forEach(o => o.remove());
-      nomes.sort((a,b) => a.localeCompare(b, 'pt-BR'));
       nomes.forEach(n => {
         const opt = document.createElement('option');
         opt.value = n;
@@ -1198,7 +1307,50 @@
       });
     }
 
+    function configurarCadastroRapido(tipo, select, colecao) {
+      const controles = cadastroRapido[tipo];
+      const fechar = () => {
+        controles.box.style.display = 'none';
+        controles.input.value = '';
+      };
+      controles.abrir.addEventListener('click', () => {
+        controles.box.style.display = 'flex';
+        controles.input.focus();
+      });
+      controles.cancelar.addEventListener('click', fechar);
+      controles.salvar.addEventListener('click', async () => {
+        const novoValor = controles.input.value.replace(/\s+/g, ' ').trim().toLocaleUpperCase('pt-BR');
+        if (!novoValor) return alert(`Digite ${tipo === 'motivo' ? 'o motivo' : 'o nome do responsável'}.`);
+        const jaExiste = colecao.some(valor => String(valor).toLocaleUpperCase('pt-BR') === novoValor);
+        if (!jaExiste) colecao.push(novoValor);
+        controles.salvar.disabled = true;
+        try {
+          await salvarOpcoesTramites(opcoesTramites);
+          if (tipo === 'motivo') populateMotivoFormOptions(novoValor);
+          else populateResponsavelOptions();
+          select.value = novoValor;
+          fechar();
+          showToast(`${tipo === 'motivo' ? 'Motivo' : 'Responsável'} adicionado à lista.`);
+        } catch (error) {
+          console.error('[TRAMITES][OPCOES][SAVE][ERRO]', error);
+          alert('Não foi possível salvar a nova opção.\n\nDetalhe: ' + (error?.message || error));
+        } finally {
+          controles.salvar.disabled = false;
+        }
+      });
+      controles.input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          controles.salvar.click();
+        }
+        if (event.key === 'Escape') fechar();
+      });
+    }
+
+    populateMotivoFormOptions();
     populateResponsavelOptions();
+    configurarCadastroRapido('motivo', fld.motivo, opcoesTramites.motivos);
+    configurarCadastroRapido('responsavel', fld.responsavel, opcoesTramites.responsaveis);
     if (selTipo && tipoFilter !== 'todos') selTipo.value = tipoFilter;
     renderTable();
 
@@ -1333,6 +1485,7 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
 
       // salvar e atualizar UI
       await saveData(data);
+      populateMotivoFormOptions();
       populateResponsavelOptions();
       renderTable();
       dlgForm.close();
@@ -1349,6 +1502,7 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
       if (!confirm('Excluir este trâmite?')) return;
       data = data.filter(x => String(x.id) !== String(id));
       await saveData(data);
+      populateMotivoFormOptions();
       populateResponsavelOptions();
       renderTable();
       dlgForm.close();

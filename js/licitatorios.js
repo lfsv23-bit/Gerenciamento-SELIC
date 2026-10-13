@@ -595,6 +595,81 @@
         .join('|');
     }
 
+    function normalizarCabecalhoItemAta(valor) {
+      return String(valor ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Z0-9]/gi, '')
+        .toUpperCase();
+    }
+
+    function mapaColunasItemAta(cabecalho = []) {
+      const nomes = (Array.isArray(cabecalho) ? cabecalho : []).map(normalizarCabecalhoItemAta);
+      const localizar = (...opcoes) => nomes.findIndex(nome => opcoes.some(opcao => nome === opcao || nome.includes(opcao)));
+      return {
+        codigo: localizar('CODIGO', 'COD', 'CATMAT', 'CATSER'),
+        descricao: localizar('DESCRICAO', 'DESCRICAODOITEM', 'PRODUTO', 'OBJETO'),
+        unidade: localizar('UNIDADEDEMEDIDA', 'UNIDADE', 'UND', 'UNID')
+      };
+    }
+
+    function valorColunaItemAta(row, indice) {
+      return indice >= 0 ? String(row?.[indice] ?? '').replace(/\s+/g, ' ').trim() : '';
+    }
+
+    function codigoIdentidadeItemAta(row, colunas) {
+      return valorColunaItemAta(row, colunas.codigo).replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    }
+
+    function chaveSemCodigoItemAta(row, colunas) {
+      const descricao = valorColunaItemAta(row, colunas.descricao).toUpperCase();
+      const unidade = valorColunaItemAta(row, colunas.unidade).toUpperCase();
+      return descricao ? `${descricao}|${unidade}` : '';
+    }
+
+    function localizarCorrespondenteIrp(rowAta, cabecalhoAta, itensIrp) {
+      const colunasAta = mapaColunasItemAta(cabecalhoAta);
+      const colunasIrp = mapaColunasItemAta(itensIrp[0]);
+      const codigoAta = codigoIdentidadeItemAta(rowAta, colunasAta);
+      if (codigoAta) {
+        return itensIrp.slice(1).find(rowIrp => codigoIdentidadeItemAta(rowIrp, colunasIrp) === codigoAta) || null;
+      }
+      const chaveAta = chaveSemCodigoItemAta(rowAta, colunasAta);
+      return chaveAta
+        ? itensIrp.slice(1).find(rowIrp => chaveSemCodigoItemAta(rowIrp, colunasIrp) === chaveAta) || null
+        : null;
+    }
+
+    function diferencasIdentificacaoAtaIrp(rowAta, cabecalhoAta, rowIrp, cabecalhoIrp) {
+      const colunasAta = mapaColunasItemAta(cabecalhoAta);
+      const colunasIrp = mapaColunasItemAta(cabecalhoIrp);
+      const campos = [
+        ['Código', 'codigo'],
+        ['Descrição', 'descricao'],
+        ['Unidade', 'unidade']
+      ];
+      return campos.reduce((lista, [rotulo, campo]) => {
+        const atual = valorColunaItemAta(rowAta, colunasAta[campo]);
+        const irp = valorColunaItemAta(rowIrp, colunasIrp[campo]);
+        if (irp && normalizarCabecalhoItemAta(atual) !== normalizarCabecalhoItemAta(irp)) {
+          lista.push({ rotulo, atual: atual || '(vazio)', irp });
+        }
+        return lista;
+      }, []);
+    }
+
+    function aplicarIdentificacaoIrpNoItemAta(rowAta, cabecalhoAta, rowIrp, cabecalhoIrp) {
+      const colunasAta = mapaColunasItemAta(cabecalhoAta);
+      const colunasIrp = mapaColunasItemAta(cabecalhoIrp);
+      ['codigo', 'descricao', 'unidade'].forEach(campo => {
+        const destino = colunasAta[campo];
+        const origem = colunasIrp[campo];
+        if (destino < 0 || origem < 0) return;
+        const valorIrp = valorColunaItemAta(rowIrp, origem);
+        if (valorIrp) rowAta[destino] = valorIrp;
+      });
+    }
+
     function mapaItensAtaUsados(atas, ataIgnorada = {}) {
       const mapa = new Map();
       (Array.isArray(atas) ? atas : []).forEach((ata, ataIndex) => {
@@ -625,14 +700,10 @@
     }
 
     function itensAtaForaDaIrp(irp, itensAta) {
-      const linhasAta = normalizarItensAta(itensAta).slice(1).filter(row => chaveItemAta(row));
-      const itensIrp = normalizarItensAta(irp?.itens).slice(1);
-      if (!itensIrp.length) return linhasAta;
-      const permitidos = new Set(itensIrp.map(chaveItemAta).filter(Boolean));
-      return linhasAta.filter(row => {
-        const key = chaveItemAta(row);
-        return key && !permitidos.has(key);
-      });
+      const linhasAta = normalizarItensAta(itensAta);
+      const itensIrp = normalizarItensAta(irp?.itens);
+      if (itensIrp.length <= 1) return linhasAta.slice(1).filter(row => chaveItemAta(row));
+      return linhasAta.slice(1).filter(row => chaveItemAta(row) && !localizarCorrespondenteIrp(row, linhasAta[0], itensIrp));
     }
 
     function resumoItemAta(row) {
@@ -668,10 +739,34 @@
         alert(`A IRP vinculada (${irp.numero || ''}/${irp.ano || ''}) não possui itens cadastrados. Importe primeiro os itens da IRP/processo gerador.`);
         return false;
       }
+
+      const divergentes = linhasAta.slice(1).map(rowAta => {
+        const rowIrp = localizarCorrespondenteIrp(rowAta, linhasAta[0], itensIrp);
+        if (!rowIrp) return null;
+        const diferencas = diferencasIdentificacaoAtaIrp(rowAta, linhasAta[0], rowIrp, itensIrp[0]);
+        return diferencas.length ? { rowAta, rowIrp, diferencas } : null;
+      }).filter(Boolean);
+
+      if (divergentes.length) {
+        const detalhes = divergentes.slice(0, 5).map((item, index) => {
+          const alteracoes = item.diferencas
+            .map(diferenca => `   ${diferenca.rotulo}: "${diferenca.atual}" -> "${diferenca.irp}"`)
+            .join('\n');
+          return `${index + 1}. ${resumoItemAta(item.rowAta)}\n${alteracoes}`;
+        }).join('\n\n');
+        const confirmar = confirm(
+          `${divergentes.length} item(s) possuem o mesmo código da IRP, mas apresentam diferenças de identificação.\n\n` +
+          `${detalhes}${divergentes.length > 5 ? '\n\n...' : ''}\n\n` +
+          'Deseja usar código, descrição e unidade da IRP? A quantidade e os valores importados da Ata serão preservados.'
+        );
+        if (!confirmar) return false;
+        divergentes.forEach(item => aplicarIdentificacaoIrpNoItemAta(item.rowAta, linhasAta[0], item.rowIrp, itensIrp[0]));
+      }
+
       const fora = itensAtaForaDaIrp(irp, linhasAta);
       if (!fora.length) return true;
       const exemplos = fora.slice(0, 5).map((row, idx) => `${idx + 1}. ${resumoItemAta(row)}`).join('\n');
-      alert(`A ata possui ${fora.length} item(s) que não constam na IRP vinculada (${qtdIrp} item(s) cadastrados na IRP).\n\n${exemplos}${fora.length > 5 ? '\n...' : ''}\n\nAjuste o arquivo TXT ou selecione os itens diretamente pela IRP.`);
+      alert(`A ata possui ${fora.length} item(s) cujo código não consta na IRP vinculada (${qtdIrp} item(s) cadastrados na IRP).\n\n${exemplos}${fora.length > 5 ? '\n...' : ''}\n\nAjuste o código no arquivo TXT ou selecione os itens diretamente pela IRP.`);
       return false;
     }
 
