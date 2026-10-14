@@ -190,6 +190,10 @@
               <div id="tra_ind_distribuidos" class="value">0</div>
             </div>
             <div class="tra-indicator">
+              <div class="label">Acervo do setor</div>
+              <div id="tra_ind_acervo" class="value">0</div>
+            </div>
+            <div class="tra-indicator">
               <div class="label">⏱️ Acima do limite</div>
               <div id="tra_ind_acima" class="value">0</div>
             </div>
@@ -265,6 +269,7 @@
             <button id="filtro_pendentes" class="btn primary">Aguardando distribuição</button>
             <button id="filtro_distribuidos" class="btn">Com responsável</button>
             <button id="filtro_concluidos" class="btn">Atividades concluídas</button>
+            <button id="filtro_acervo" class="btn">Acervo</button>
             <button id="filtro_todos" class="btn">Todos</button>
           </div>
         </div>
@@ -435,6 +440,40 @@
         </form>
       </dialog>
 
+      <dialog id="tra_acervo_dlg" style="width:560px;max-width:95%">
+        <form id="tra_acervo_form">
+          <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center">
+            <strong>Enviar ao acervo do setor</strong>
+            <button id="tra_acervo_close" class="btn ghost" type="button">Fechar</button>
+          </div>
+          <div class="modal-body">
+            <input id="tra_acervo_id" type="hidden">
+            <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+              <div class="field">
+                <label>Data do arquivamento</label>
+                <input id="tra_acervo_data" class="input" type="date" required>
+              </div>
+              <div class="field">
+                <label>Responsável</label>
+                <input id="tra_acervo_responsavel" class="input" required>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label>Motivo</label>
+                <input id="tra_acervo_motivo" class="input" value="DOCUMENTO DE GUARDA PERMANENTE" required>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label>Observação</label>
+                <textarea id="tra_acervo_obs" class="input" rows="3" placeholder="Informação opcional sobre a guarda do documento"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px;border-top:1px solid var(--line)">
+            <button id="tra_acervo_cancel" class="btn" type="button">Cancelar</button>
+            <button id="tra_acervo_save" class="btn primary" type="submit">Enviar ao acervo</button>
+          </div>
+        </form>
+      </dialog>
+
       <!-- Modal de Detalhes do Processo + Trâmites -->
       <dialog id="tra_view" style="width:900px;max-width:95%;">
        <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center">
@@ -510,6 +549,7 @@
     // painel & filtros refs
     const indPendentes = container.querySelector('#tra_ind_pendentes');
     const indDistribuidos = container.querySelector('#tra_ind_distribuidos');
+    const indAcervo = container.querySelector('#tra_ind_acervo');
     const indAcima = container.querySelector('#tra_ind_acima');
     const selLimitDays = container.querySelector('#tra_limit_days');
     const selStatus = container.querySelector('#tra_filter_status');
@@ -521,7 +561,16 @@
     const btnFiltroPendentes = container.querySelector('#filtro_pendentes');
     const btnFiltroDistribuidos = container.querySelector('#filtro_distribuidos');
     const btnFiltroConcluidos = container.querySelector('#filtro_concluidos');
+    const btnFiltroAcervo = container.querySelector('#filtro_acervo');
     const btnFiltroTodos = container.querySelector('#filtro_todos');
+
+    const dlgAcervo = container.querySelector('#tra_acervo_dlg');
+    const formAcervo = container.querySelector('#tra_acervo_form');
+    const acervoId = container.querySelector('#tra_acervo_id');
+    const acervoData = container.querySelector('#tra_acervo_data');
+    const acervoResponsavel = container.querySelector('#tra_acervo_responsavel');
+    const acervoMotivo = container.querySelector('#tra_acervo_motivo');
+    const acervoObs = container.querySelector('#tra_acervo_obs');
 
     /* ---------- Estado ---------- */
     await carregarProcessosSupabaseParaTramites();
@@ -641,6 +690,11 @@
       if (!list.length) return 0;
       return Math.max(...list.map(x => Number(x.entrada || 0)));
     }
+    function compararTramitesRecentes(a, b) {
+      const diferencaData = new Date(b.dataEntrada) - new Date(a.dataEntrada);
+      if (diferencaData) return diferencaData;
+      return Number(b.ordemReal || 0) - Number(a.ordemReal || 0);
+    }
     function getLatestForNumero(numero) {
       // pega o trâmite com maior entrada e, dentro dessa entrada, o mais recente (data)
       const list = getAllByNumero(numero);
@@ -648,7 +702,7 @@
       const maxEntrada = getMaxEntrada(numero);
       const sameEntrada = list.filter(x => Number(x.entrada || 0) === maxEntrada);
       // se houver empates, ordena por dataEntrada desc
-      sameEntrada.sort((a,b) => new Date(b.dataEntrada) - new Date(a.dataEntrada));
+      sameEntrada.sort(compararTramitesRecentes);
       return sameEntrada[0];
     }
 
@@ -743,9 +797,10 @@
           blocos[e].forEach(t => {
             html += `
               <div style="padding:10px;border-bottom:1px solid var(--line)">
-                <div><strong>Status:</strong> ${t.status || '-' } &nbsp; <small style="color:var(--muted)">(${fmtDate(t.dataEntrada)})</small></div>
+                <div><strong>Status:</strong> ${t.emAcervo ? 'ACERVO DO SETOR' : (t.status || '-')} &nbsp; <small style="color:var(--muted)">(${fmtDate(t.dataEntrada)})</small></div>
                 <div><strong>Motivo:</strong> ${t.motivo || '-'}</div>
                 <div><strong>Responsável:</strong> ${t.responsavel || '-'}</div>
+                ${t.emAcervo ? `<div><strong>Motivo do arquivamento:</strong> ${t.motivoArquivamento || '-'}</div>` : ''}
                 <div style="margin-top:6px"><strong>Observação:</strong><div style="white-space:pre-wrap;margin-top:4px">${t.obs || '-'}</div></div>
               </div>
             `;
@@ -902,7 +957,7 @@
         const maxE = Math.max(...lista.map(x => Number(x.entrada || 0)));
         // pegar os da entrada max
         const sameE = lista.filter(x => Number(x.entrada || 0) === maxE);
-        sameE.sort((a,b) => new Date(b.dataEntrada) - new Date(a.dataEntrada));
+        sameE.sort(compararTramitesRecentes);
         return sameE[0];
       });
 
@@ -913,7 +968,8 @@
         // filtro por botão (pendentes / concluidos / todos)
         if (filtroAtual === 'pendentes' && status !== 'AGUARDANDO DISTRIBUIÇÃO') return false;
         if (filtroAtual === 'distribuidos' && status !== 'COM RESPONSÁVEL') return false;
-        if (filtroAtual === 'concluidos' && status !== 'CONCLUÍDO') return false;
+        if (filtroAtual === 'concluidos' && (status !== 'CONCLUÍDO' || r.emAcervo)) return false;
+        if (filtroAtual === 'acervo' && !r.emAcervo) return false;
 
         // filtro por search
         if (q) {
@@ -950,10 +1006,12 @@
       });
 
       // atualizar indicadores (INDICADORES FILTRADOS)
-      const pendentesCount = maisRecentes.filter(cur => statusTramiteTexto(cur.status) === 'AGUARDANDO DISTRIBUIÇÃO').length;
-      const distribuidosCount = maisRecentes.filter(cur => statusTramiteTexto(cur.status) === 'COM RESPONSÁVEL').length;
+      const pendentesCount = maisRecentes.filter(cur => !cur.emAcervo && statusTramiteTexto(cur.status) === 'AGUARDANDO DISTRIBUIÇÃO').length;
+      const distribuidosCount = maisRecentes.filter(cur => !cur.emAcervo && statusTramiteTexto(cur.status) === 'COM RESPONSÁVEL').length;
+      const acervoCount = maisRecentes.filter(cur => cur.emAcervo).length;
 
       const acimaCount = filtered.reduce((acc, cur) => {
+        if (cur.emAcervo) return acc;
         const dias = diasNoSetor(cur.dataEntrada);
         if (dias >= limitDays) return acc + 1;
         return acc;
@@ -961,11 +1019,13 @@
 
       indPendentes.textContent = pendentesCount;
       indDistribuidos.textContent = distribuidosCount;
+      indAcervo.textContent = acervoCount;
       indAcima.textContent = acimaCount;
 
       // Renderiza APENAS o trâmite mais recente de cada processo (da entrada atual)
       filtered.forEach((r) => {
         const status = statusTramiteTexto(r.status);
+        const statusExibido = r.emAcervo ? 'ACERVO DO SETOR' : status;
         const statusColor =
           status === 'AGUARDANDO DISTRIBUIÇÃO' ? 'status-aguardando' :
           status === 'COM RESPONSÁVEL' ? 'status-andamento' :
@@ -974,7 +1034,7 @@
         const entradaDisplay = Number(r.entrada || 0) || 1;
 
         // determinar se mostra o botão Nova Entrada: só se o último (maisRecentes) estiver CONCLUÍDO
-        const showNovaEntrada = status === 'CONCLUÍDO';
+        const showNovaEntrada = status === 'CONCLUÍDO' && !r.emAcervo;
 
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -987,13 +1047,14 @@
 <td>${r.objeto || ''}</td>
           <td>${r.responsavel || ''}</td>
           <td>${tipoTramiteTexto(r.tipoTramite)}</td>
-          <td><span class="status ${statusColor}">${status}</span></td>
+          <td><span class="status ${statusColor}">${statusExibido}</span></td>
           <td>${r.destino || ''}</td>
           <td style="display:flex;gap:6px;align-items:center">
             <button class="btn btn-edit" data-edit="${r.id}">Editar</button>
             ${status === 'AGUARDANDO DISTRIBUIÇÃO' ? `<button class="btn btn-tramitar" data-tramitar="${r.id}">Distribuir</button>` : ''}
             ${status === 'COM RESPONSÁVEL' ? `<button class="btn btn-tramitar" data-tramitar="${r.id}">Redistribuir</button>` : ''}
             ${status === 'COM RESPONSÁVEL' ? `<button class="btn btn-finalizar" data-finalizar="${r.id}">Concluir atividade</button>` : ''}
+            ${status === 'CONCLUÍDO' && !r.emAcervo ? `<button class="btn" data-acervo="${r.id}">Enviar ao acervo</button>` : ''}
             ${showNovaEntrada ? `<button class="btn btn-novaentrada" data-novaentrada="${r.numero}" title="Nova Entrada">Nova Entrada</button>` : ''}
           </td>
         `;
@@ -1014,6 +1075,10 @@
 
       tblBody.querySelectorAll('[data-finalizar]').forEach(btn =>
         btn.onclick = (e) => { e.stopPropagation(); openFinalizar(btn.dataset.finalizar); }
+      );
+
+      tblBody.querySelectorAll('[data-acervo]').forEach(btn =>
+        btn.onclick = (e) => { e.stopPropagation(); openAcervo(btn.dataset.acervo); }
       );
 
       tblBody.querySelectorAll('[data-novaentrada]').forEach(btn =>
@@ -1192,6 +1257,20 @@
       setTimeout(() => fld.motivo.focus(), 60);
     }
 
+    function openAcervo(id) {
+      const item = data.find(registro => String(registro.id) === String(id));
+      if (!item) return alert('Trâmite não encontrado.');
+      if (statusTramiteTexto(item.status) !== 'CONCLUÍDO') {
+        return alert('Conclua primeiro a atividade do setor antes de enviar o documento ao acervo.');
+      }
+      acervoId.value = item.id;
+      acervoData.value = new Date().toISOString().slice(0, 10);
+      acervoResponsavel.value = item.responsavel || '';
+      acervoMotivo.value = 'DOCUMENTO DE GUARDA PERMANENTE';
+      acervoObs.value = '';
+      dlgAcervo.showModal();
+    }
+
     function clearForm() {
       form.reset();
       fld.idx.value = '';
@@ -1267,6 +1346,7 @@
     btnFiltroPendentes.addEventListener('click', () => { filtroAtual = 'pendentes'; renderTable(); });
     btnFiltroDistribuidos.addEventListener('click', () => { filtroAtual = 'distribuidos'; renderTable(); });
     btnFiltroConcluidos.addEventListener('click', () => { filtroAtual = 'concluidos'; renderTable(); });
+    btnFiltroAcervo.addEventListener('click', () => { filtroAtual = 'acervo'; renderTable(); });
     btnFiltroTodos.addEventListener('click', () => { filtroAtual = 'todos'; renderTable(); });
 
     // selects do painel
@@ -1297,6 +1377,42 @@
     });
     fld.tipoTramite.addEventListener('change', () => {
       atualizarDestinosPorTipo();
+    });
+
+    container.querySelector('#tra_acervo_close').addEventListener('click', () => dlgAcervo.close());
+    container.querySelector('#tra_acervo_cancel').addEventListener('click', () => dlgAcervo.close());
+    dlgAcervo.addEventListener('cancel', event => { event.preventDefault(); dlgAcervo.close(); });
+    formAcervo.addEventListener('submit', async event => {
+      event.preventDefault();
+      const origem = data.find(registro => String(registro.id) === String(acervoId.value));
+      if (!origem) return alert('Não foi possível localizar o trâmite que será enviado ao acervo.');
+      if (!acervoData.value) return alert('Informe a data do arquivamento.');
+      if (!acervoResponsavel.value.trim()) return alert('Informe o responsável pelo arquivamento.');
+      if (!acervoMotivo.value.trim()) return alert('Informe o motivo do arquivamento.');
+
+      const registroAcervo = {
+        ...origem,
+        id: genId(),
+        dataEntrada: acervoData.value,
+        motivo: 'ENVIO AO ACERVO DO SETOR',
+        responsavel: acervoResponsavel.value.trim(),
+        status: 'CONCLUÍDO',
+        obs: acervoObs.value.trim(),
+        emAcervo: true,
+        dataArquivamento: acervoData.value,
+        motivoArquivamento: acervoMotivo.value.trim(),
+        responsavelArquivamento: acervoResponsavel.value.trim(),
+        ordemReal: Date.now()
+      };
+      data.unshift(registroAcervo);
+      try {
+        await saveData(data);
+        renderTable();
+        dlgAcervo.close();
+        showToast('Documento enviado ao acervo do setor.');
+      } catch (error) {
+        data = data.filter(registro => registro.id !== registroAcervo.id);
+      }
     });
 
     function valoresUnicosOrdenados(valores) {

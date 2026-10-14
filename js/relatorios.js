@@ -94,19 +94,25 @@
     const diff = Math.floor((now - d) / (1000*60*60*24));
     return diff;
   }
+  function statusTramiteTexto(value){
+    const status = String(value || '').trim().toLocaleUpperCase('pt-BR');
+    if (status === 'AGUARDANDO' || status === 'AGUARDANDO DISTRIBUICAO' || status === 'AGUARDANDO DISTRIBUIÇÃO') return 'AGUARDANDO DISTRIBUIÇÃO';
+    if (status === 'EM ANDAMENTO' || status === 'COM RESPONSAVEL' || status === 'COM RESPONSÁVEL') return 'COM RESPONSÁVEL';
+    if (status === 'CONCLUIDO' || status === 'CONCLUÍDO') return 'CONCLUÍDO';
+    return status;
+  }
+  function compararTramitesRecentes(a, b){
+    const diferencaData = new Date(b.dataEntrada) - new Date(a.dataEntrada);
+    if (diferencaData) return diferencaData;
+    return Number(b.ordemReal || 0) - Number(a.ordemReal || 0);
+  }
 
   // pega último trâmite por processo (por dataEntrada)
   function lastTramiteForProcess(tramites, numero){
     const all = tramites.filter(t => String(t.numero||'').trim().toLowerCase() === String(numero||'').trim().toLowerCase());
     if (!all.length) return null;
     // se dataEntrada for em formato dd/mm/yyyy ou yyyy-mm-dd, tentar ordenar com Date
-    all.sort((a,b)=>{
-      const da = new Date(a.dataEntrada);
-      const db = new Date(b.dataEntrada);
-      if (!isNaN(da) && !isNaN(db)) return db - da;
-      // fallback: string compare
-      return (String(b.dataEntrada||'')).localeCompare(String(a.dataEntrada||''));
-    });
+    all.sort(compararTramitesRecentes);
     return all[0];
   }
 
@@ -123,6 +129,7 @@
           <button id="rel_export_xlsx" class="btn primary">Exportar XLSX</button>
           <button id="rel_export_pdf" class="btn">Exportar PDF</button>
           <label style="margin-left:8px;font-size:13px;color:var(--muted)"><input type="checkbox" id="rel_show_concluidos"> Mostrar concluídos</label>
+          <label style="font-size:13px;color:var(--muted)"><input type="checkbox" id="rel_show_acervo"> Incluir acervo do setor</label>
         </div>
 
         <div id="rel_area"></div>
@@ -147,8 +154,8 @@
             <div class="field"><label>Status</label>
               <select id="f_status" class="select">
                 <option value="">Todos</option>
-                <option value="AGUARDANDO">AGUARDANDO</option>
-                <option value="EM ANDAMENTO">EM ANDAMENTO</option>
+                <option value="AGUARDANDO DISTRIBUIÇÃO">AGUARDANDO DISTRIBUIÇÃO</option>
+                <option value="COM RESPONSÁVEL">COM RESPONSÁVEL</option>
                 <option value="CONCLUÍDO">CONCLUÍDO</option>
               </select>
             </div>
@@ -169,6 +176,7 @@
     const btnX = container.querySelector('#rel_export_xlsx');
     const btnP = container.querySelector('#rel_export_pdf');
     const chkShowConcluidos = container.querySelector('#rel_show_concluidos');
+    const chkShowAcervo = container.querySelector('#rel_show_acervo');
 
     // filtros modal
     const dlgFiltros = container.querySelector('#rel_filtros');
@@ -217,7 +225,10 @@
   secretaria: p.secretaria || '',
   objetoResumo: (p.objeto || '').slice(0,300),
   setorAtual: last.destino || '',
-  status: last.status || '',
+  status: statusTramiteTexto(last.status),
+  emAcervo: Boolean(last.emAcervo),
+  dataArquivamento: last.dataArquivamento || '',
+  motivoArquivamento: last.motivoArquivamento || '',
   diasNoSetor: daysBetween(last.dataEntrada),
   processoObjFull: p.objeto || '',
   processoDescFull: p.descricaoCompleta || '',
@@ -263,7 +274,7 @@
                   <td>${(r.secretaria||'')}</td>
                   <td>${(r.objetoResumo||'')}</td>
                   <td>${(r.setorAtual||'')}</td>
-                  <td>${(r.status||'')}</td>
+                  <td>${r.emAcervo ? 'ACERVO DO SETOR' : (r.status||'')}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -289,7 +300,7 @@
     function openDetailPrint(numero){
       const proc = procs.find(p => String(p.numero||'').trim().toLowerCase() === String(numero||'').trim().toLowerCase());
       const last = tram.filter(t => String(t.numero||'').trim().toLowerCase() === String(numero||'').trim().toLowerCase())
-                      .sort((a,b)=> new Date(b.dataEntrada) - new Date(a.dataEntrada))[0];
+                      .sort(compararTramitesRecentes)[0];
       let html = `<div class="card"><div style="display:flex;justify-content:space-between;align-items:center"><div><h3>Processo: ${numero}</h3><div class="muted">Relatório detalhado</div></div></div>`;
       if (proc) {
         html += `<div style="margin-top:8px"><strong>Secretaria:</strong> ${proc.secretaria||''}</div>`;
@@ -313,7 +324,7 @@
     }
 
     // função que aplica filtros e atualiza render
-    function applyFilters(){
+    function filtrarDataset(){
       const dataset = buildDataset();
       const qNumero = (f_numero.value || '').trim().toLowerCase();
       const qDe = parseDateInput(f_data_de.value);
@@ -325,6 +336,7 @@
       const qStatus = (f_status.value || '').trim().toUpperCase();
       const qFree = (f_q.value || '').trim().toLowerCase();
       const showConcl = chkShowConcluidos.checked;
+      const showAcervo = chkShowAcervo.checked;
 
       const filtered = dataset.filter(r => {
         if (qNumero && String(r.numero||'').toLowerCase().indexOf(qNumero) === -1) return false;
@@ -332,8 +344,9 @@
         if (qMotivo && String(r.motivo||'').toLowerCase().indexOf(qMotivo) === -1) return false;
         if (qSec && String(r.secretaria||'').toLowerCase().indexOf(qSec) === -1) return false;
         if (qSetor && String(r.setorAtual||'').toLowerCase().indexOf(qSetor) === -1) return false;
-        if (qStatus && String(r.status||'').toUpperCase() !== qStatus) return false;
-        if (!showConcl && String(r.status||'').toUpperCase() === 'CONCLUÍDO') return false;
+        if (qStatus && statusTramiteTexto(r.status) !== statusTramiteTexto(qStatus)) return false;
+        if (r.emAcervo && !showAcervo) return false;
+        if (!r.emAcervo && !showConcl && statusTramiteTexto(r.status) === 'CONCLUÍDO') return false;
         // date range on dataEntrada
         if (qDe || qAte) {
           if (!r.dataEntrada) return false;
@@ -349,7 +362,13 @@
         return true;
       });
 
+      return filtered;
+    }
+
+    function applyFilters(){
+      const filtered = filtrarDataset();
       renderTable(filtered);
+      return filtered;
     }
 
     // limpar filtros
@@ -373,7 +392,7 @@
 
     // export XLSX: gera duas sheets (Processos e Tramites) + flat relatorio
     btnX.onclick = () => {
-      const dataset = buildDataset();
+      const dataset = filtrarDataset();
       // sheet Processos (originais)
       const sheetProcs = procs.map(p => ({
         id: p.id||'', numero: p.numero||'', secretaria: p.secretaria||'',
@@ -384,11 +403,12 @@
       }));
       const sheetTram = tram.map(t => ({
         id: t.id||'', numero: t.numero||'', secretaria: t.secretaria||'', dataEntrada: t.dataEntrada||'',
-        motivo: t.motivo||'', responsavel: t.responsavel||'', status: t.status||'', destino: t.destino||'', obs: t.obs||''
+        motivo: t.motivo||'', responsavel: t.responsavel||'', status: statusTramiteTexto(t.status), destino: t.destino||'', obs: t.obs||'',
+        emAcervo: t.emAcervo ? 'SIM' : 'NÃO', dataArquivamento: t.dataArquivamento || '', motivoArquivamento: t.motivoArquivamento || ''
       }));
       const sheetRel = dataset.map(r => ({
         numero: r.numero, dataEntrada: r.dataEntrada, diasNoSetor: r.diasNoSetor, responsavel: r.responsavel,
-        motivo: r.motivo, parecer: r.parecer, secretaria: r.secretaria, objetoResumo: r.objetoResumo, setorAtual: r.setorAtual, status: r.status, observacao: r.observacao
+        motivo: r.motivo, parecer: r.parecer, secretaria: r.secretaria, objetoResumo: r.objetoResumo, setorAtual: r.setorAtual, status: r.emAcervo ? 'ACERVO DO SETOR' : r.status, observacao: r.observacao
       }));
 
       exportToXLSX('relatorio_processos_no_setor.xlsx', {Processos: sheetProcs, Tramites: sheetTram, 'Processos no Setor': sheetRel});
@@ -407,6 +427,7 @@
 
     // show/hide concluidos checkbox -> re-aplica filtros
     chkShowConcluidos.onchange = () => applyFilters();
+    chkShowAcervo.onchange = () => applyFilters();
 
     // inicializa com filtros vazios e aplica (padrão: ocultar concluídos)
     clearFilters();
