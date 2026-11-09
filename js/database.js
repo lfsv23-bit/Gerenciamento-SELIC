@@ -1040,6 +1040,43 @@
     if (ins.error) throw ins.error;
   }
 
+  async function sincronizarProcessoNosTramitesInternos(client, processoId, processo, numeroAnterior = "") {
+    const payload = {
+      processo_id: processoId,
+      numero_processo: processo.numero || "",
+      secretaria: processo.secretaria || "",
+      objeto: processo.objeto || ""
+    };
+
+    console.log("[SUPABASE][tramites_internos][SYNC_PROCESSO][ANTES]", {
+      processoId,
+      numeroAnterior,
+      payload
+    });
+
+    const porVinculo = await client
+      .from("tramites_internos")
+      .update(payload)
+      .eq("processo_id", processoId)
+      .select("id");
+    if (porVinculo.error) throw porVinculo.error;
+
+    let porNumero = { data: [], error: null };
+    if (numeroAnterior) {
+      porNumero = await client
+        .from("tramites_internos")
+        .update(payload)
+        .eq("numero_processo", numeroAnterior)
+        .select("id");
+      if (porNumero.error) throw porNumero.error;
+    }
+
+    console.log("[SUPABASE][tramites_internos][SYNC_PROCESSO][DEPOIS]", {
+      vinculadosAtualizados: porVinculo.data?.length || 0,
+      recuperadosPorNumero: porNumero.data?.length || 0
+    });
+  }
+
   async function saveProcessoCompleto(processo) {
     const client = requireClient();
     const user = await requireAuthenticatedUser();
@@ -1093,6 +1130,12 @@
     if (error) throw error;
 
     const processoId = procSaved.id;
+    await sincronizarProcessoNosTramitesInternos(
+      client,
+      processoId,
+      core,
+      existente?.numero || core.numero
+    );
     await replaceRows(client, "processo_blocos", "processo_id", processoId, blocoEntries(processo, processoId));
 
     const itens = [
