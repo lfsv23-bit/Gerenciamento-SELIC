@@ -1416,6 +1416,57 @@
     return (data || []).map(tramiteInternoFromRow);
   }
 
+  async function sincronizarTodosProcessosNosTramitesInternos() {
+    const client = requireClient();
+    await requireAuthenticatedUser();
+
+    const [processosResult, tramitesResult] = await Promise.all([
+      client.from("processos").select("id, numero, secretaria, objeto"),
+      client.from("tramites_internos").select("id, processo_id, numero_processo, secretaria, objeto")
+    ]);
+    if (processosResult.error) throw processosResult.error;
+    if (tramitesResult.error) throw tramitesResult.error;
+
+    const processosPorId = new Map((processosResult.data || []).map(processo => [processo.id, processo]));
+    const processosPorNumero = new Map((processosResult.data || []).map(processo => [String(processo.numero || "").trim(), processo]));
+    let atualizados = 0;
+    let naoEncontrados = 0;
+
+    for (const tramite of tramitesResult.data || []) {
+      const processo = processosPorId.get(tramite.processo_id)
+        || processosPorNumero.get(String(tramite.numero_processo || "").trim());
+      if (!processo) {
+        naoEncontrados += 1;
+        continue;
+      }
+
+      const payload = {
+        processo_id: processo.id,
+        numero_processo: processo.numero || "",
+        secretaria: processo.secretaria || "",
+        objeto: processo.objeto || ""
+      };
+      const jaSincronizado = tramite.processo_id === payload.processo_id
+        && tramite.numero_processo === payload.numero_processo
+        && tramite.secretaria === payload.secretaria
+        && tramite.objeto === payload.objeto;
+      if (jaSincronizado) continue;
+
+      const { error } = await client
+        .from("tramites_internos")
+        .update(payload)
+        .eq("id", tramite.id);
+      if (error) throw error;
+      atualizados += 1;
+    }
+
+    return {
+      total: (tramitesResult.data || []).length,
+      atualizados,
+      naoEncontrados
+    };
+  }
+
   async function salvarTramitesInternos(tramites) {
     const client = requireClient();
     await requireAuthenticatedUser();
@@ -1946,6 +1997,7 @@
     saveTramitesGerais,
     listarTramitesGerais,
     listarTramitesInternos,
+    sincronizarTodosProcessosNosTramitesInternos,
     salvarTramitesInternos,
     importarAnexoBackup,
     criarUrlAssinadaAnexo,

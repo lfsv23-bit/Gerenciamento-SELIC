@@ -174,6 +174,7 @@
           </div>
           <div style="display:flex;gap:8px">
             <input id="tra_q" class="input" placeholder="buscar nº processo, objeto, motivo..." style="min-width:280px">
+            <button id="tra_sync_processos" class="btn" type="button">Atualizar dados dos processos</button>
             <button id="tra_add" class="btn primary">Novo trâmite</button>
           </div>
         </header>
@@ -494,6 +495,7 @@
     /* ---------- Referências DOM ---------- */
     const tblBody = container.querySelector('#tra_tbl tbody');
     const qInput = container.querySelector('#tra_q');
+    const syncProcessosBtn = container.querySelector('#tra_sync_processos');
     const addBtn = container.querySelector('#tra_add');
 
     // busca modal refs
@@ -1335,6 +1337,32 @@
     dlgView.addEventListener('cancel', e => { e.preventDefault(); dlgView.close(); });
 
     /* ---------- Eventos UI ---------- */
+    syncProcessosBtn?.addEventListener('click', async () => {
+      if (!window.AppDatabase?.sincronizarTodosProcessosNosTramitesInternos) {
+        alert('A atualização em lote não está disponível. Atualize a página sem usar o cache.');
+        return;
+      }
+      const textoOriginal = syncProcessosBtn.textContent;
+      syncProcessosBtn.disabled = true;
+      syncProcessosBtn.textContent = 'Atualizando...';
+      try {
+        const resultado = await window.AppDatabase.sincronizarTodosProcessosNosTramitesInternos();
+        await carregarProcessosSupabaseParaTramites();
+        data = await carregarTramitesInternosSupabase();
+        renderTable();
+        const complemento = resultado.naoEncontrados
+          ? ` ${resultado.naoEncontrados} trâmite(s) não possuem processo correspondente.`
+          : '';
+        showToast(`${resultado.atualizados} trâmite(s) atualizado(s).${complemento}`, 5000);
+      } catch (error) {
+        console.error('[SUPABASE][tramites_internos][SYNC_PROCESSOS][ERRO]', error);
+        alert('Não foi possível atualizar os dados dos processos nos trâmites.\n\nDetalhe: ' + (error?.message || error));
+      } finally {
+        syncProcessosBtn.disabled = false;
+        syncProcessosBtn.textContent = textoOriginal;
+      }
+    });
+
     addBtn.addEventListener('click', openBusca);
     buscaInput.addEventListener('input', (e) => renderResultados(e.target.value));
     qInput.addEventListener('input', () => renderTable());
