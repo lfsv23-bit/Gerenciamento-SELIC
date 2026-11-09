@@ -526,6 +526,7 @@ btnMerge.addEventListener("click", async () => {
 
             <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px">
               <button id="mov_limpar" class="btn" type="button">Limpar</button>
+              <button id="mov_baixar_etiquetas_relatorio" class="btn" type="button" disabled>Baixar etiquetas do relatório</button>
               <button id="mov_processar" class="btn primary" type="button" disabled>Processar movimentações</button>
             </div>
           </div>
@@ -542,6 +543,7 @@ btnMerge.addEventListener("click", async () => {
       const btnEtiquetas = container.querySelector('#mov_import_etiquetas');
       const btnProcessar = container.querySelector('#mov_processar');
       const btnLimpar = container.querySelector('#mov_limpar');
+      const btnBaixarEtiquetasRelatorio = container.querySelector('#mov_baixar_etiquetas_relatorio');
       const statusRelatorio = container.querySelector('#mov_relatorio_status');
       const statusEtiquetas = container.querySelector('#mov_etiquetas_status');
       const resultado = container.querySelector('#mov_resultado');
@@ -598,6 +600,32 @@ btnMerge.addEventListener("click", async () => {
         return resultado;
       }
 
+      function montarTxtEtiquetasMovimentacao(etiquetas) {
+        return etiquetas.map(etiqueta => [
+          `PROCESSO: ${etiqueta.numero || ''}`,
+          `DATA: ${etiqueta.dataCriacao || ''}`,
+          `NOME: ${etiqueta.interessadoOriginal || etiqueta.secretaria || ''}`,
+          `ASSUNTO: ${etiqueta.objeto || ''}`,
+          `SÚMULA: ${etiqueta.descricaoCompleta || ''}`
+        ].join('\r\n')).join('\r\n\r\n');
+      }
+
+      function etiquetasPresentesNoRelatorio() {
+        const etiquetasPorNumero = new Map(
+          etiquetasMescladas.map(etiqueta => [normalizarNumeroProcesso(etiqueta.numero), etiqueta])
+        );
+        const encontradas = [];
+        const semEtiqueta = [];
+        processosRelatorio.forEach(item => {
+          const numero = normalizarNumeroProcesso(item.numero);
+          if (!numero) return;
+          const etiqueta = etiquetasPorNumero.get(numero);
+          if (etiqueta) encontradas.push(etiqueta);
+          else semEtiqueta.push(numero);
+        });
+        return { encontradas, semEtiqueta };
+      }
+
       function criarProcessoMovimentacao(etiqueta) {
         return {
           id: genIdLocal(),
@@ -632,6 +660,7 @@ btnMerge.addEventListener("click", async () => {
 
       function atualizarBotaoProcessar() {
         btnProcessar.disabled = !processosRelatorio.length || !etiquetasMescladas.length;
+        btnBaixarEtiquetasRelatorio.disabled = !processosRelatorio.length || !etiquetasMescladas.length;
       }
 
       function listaHtml(titulo, itens, classe = '') {
@@ -657,6 +686,29 @@ btnMerge.addEventListener("click", async () => {
 
       btnRelatorio.onclick = () => relatorioInput.click();
       btnEtiquetas.onclick = () => etiquetasInput.click();
+      btnBaixarEtiquetasRelatorio.onclick = () => {
+        const { encontradas, semEtiqueta } = etiquetasPresentesNoRelatorio();
+        if (!encontradas.length) {
+          return alert('Nenhuma etiqueta do TXT mesclado corresponde aos processos do relatório de movimentações.');
+        }
+
+        const texto = montarTxtEtiquetasMovimentacao(encontradas);
+        const blob = new Blob(['\uFEFF' + texto], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const dataHora = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+        a.href = url;
+        a.download = `etiquetas_relatorio_movimentacoes_${dataHora}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        const complemento = semEtiqueta.length
+          ? `\n\n${semEtiqueta.length} processo(s) do relatório não possuíam etiqueta no TXT mesclado.`
+          : '';
+        alert(`${encontradas.length} etiqueta(s) exportada(s) com sucesso.${complemento}`);
+      };
 
       relatorioInput.onchange = async () => {
         const file = relatorioInput.files?.[0];
