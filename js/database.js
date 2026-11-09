@@ -1045,16 +1045,45 @@
     const user = await requireAuthenticatedUser();
     const core = processoCore(processo);
 
+    async function localizarProcessoExistente(coluna, valor) {
+      if (!valor) return null;
+      const consulta = await client
+        .from("processos")
+        .select("id, local_id, numero")
+        .eq(coluna, valor)
+        .maybeSingle();
+      if (consulta.error) throw consulta.error;
+      return consulta.data || null;
+    }
+
+    let existente = await localizarProcessoExistente("id", processo.supabaseId);
+    if (!existente) existente = await localizarProcessoExistente("local_id", core.local_id);
+    if (!existente) existente = await localizarProcessoExistente("numero", core.numero);
+
+    if (existente?.local_id) {
+      core.local_id = existente.local_id;
+    }
+
     console.log("[Supabase processos] antes do INSERT/UPDATE em public.processos", {
       userId: user.id,
+      operacao: existente ? "UPDATE" : "INSERT",
+      registroExistente: existente,
       payload: core
     });
 
-    const { data: procSaved, error } = await client
-      .from("processos")
-      .upsert(core, { onConflict: "local_id" })
-      .select("id")
-      .single();
+    const gravacao = existente
+      ? await client
+          .from("processos")
+          .update(core)
+          .eq("id", existente.id)
+          .select("id, local_id, numero")
+          .single()
+      : await client
+          .from("processos")
+          .insert(core)
+          .select("id, local_id, numero")
+          .single();
+    const { data: procSaved, error } = gravacao;
 
     console.log("[Supabase processos] depois do INSERT/UPDATE em public.processos", {
       data: procSaved,
