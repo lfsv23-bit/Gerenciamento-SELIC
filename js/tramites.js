@@ -288,6 +288,7 @@
                 <th>MOTIVO</th>
                 <th>SECRETARIA</th>
                 <th>DATA ENTRADA</th>
+                <th>DATA ÚLTIMA MOVIMENTAÇÃO</th>
                 <th>OBJETO</th>
                 <th>SITUAÇÃO DO PROCESSO</th>
                 <th>RESPONSÁVEL</th>
@@ -1055,6 +1056,7 @@
           <td>${r.motivo || ''}</td>
           <td>${r.secretaria || ''}</td>
           <td>${fmtDate(r.dataPrimeiraEntrada || r.dataEntrada) || ''}</td>
+          <td>${fmtDate(r.dataEntrada) || ''}</td>
 <td>${r.objeto || ''}</td>
           <td>${situacaoProcesso}</td>
           <td>${r.responsavel || ''}</td>
