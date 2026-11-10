@@ -1419,7 +1419,16 @@
     function aplicarFiltroRapido(filtro) {
       filtroAtual = filtro;
       statusFilter = 'todos';
+      tipoFilter = 'todos';
+      setorFilter = 'todos';
+      motivoFilter = 'todos';
+      responsavelFilter = 'todos';
+      qInput.value = '';
       selStatus.value = 'todos';
+      selTipo.value = 'todos';
+      selSetor.value = 'todos';
+      selMotivo.value = 'todos';
+      selResponsavel.value = 'todos';
       renderTable();
     }
     btnFiltroPendentes.addEventListener('click', () => aplicarFiltroRapido('pendentes'));
@@ -1429,11 +1438,13 @@
     btnFiltroTodos.addEventListener('click', () => {
       filtroAtual = 'todos';
       statusFilter = 'todos';
+      tipoFilter = 'todos';
       setorFilter = 'todos';
       motivoFilter = 'todos';
       responsavelFilter = 'todos';
       qInput.value = '';
       selStatus.value = 'todos';
+      selTipo.value = 'todos';
       selSetor.value = 'todos';
       selMotivo.value = 'todos';
       selResponsavel.value = 'todos';
@@ -1871,7 +1882,7 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
     return initTramites(container, {
       titulo: 'Trâmites Internos',
       subtitulo: 'Acompanhe os trâmites realizados dentro do setor.',
-      tipoInicial: 'INTERNO'
+      tipoInicial: 'todos'
     });
   }
 
