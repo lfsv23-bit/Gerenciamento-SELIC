@@ -72,13 +72,15 @@
     return tramitesInternosCache;
   }
   async function carregarOpcoesTramites() {
-    const fallback = { motivos: [], responsaveis: [] };
+    const fallback = { motivos: [], responsaveis: [], destinosInternos: [], destinosExternos: [] };
     if (window.isSupabaseConfigured?.() && window.AppDatabase?.obterAppSetting) {
       try {
         const valor = await window.AppDatabase.obterAppSetting(OPCOES_SETTING_KEY, fallback);
         return {
           motivos: Array.isArray(valor?.motivos) ? valor.motivos : [],
-          responsaveis: Array.isArray(valor?.responsaveis) ? valor.responsaveis : []
+          responsaveis: Array.isArray(valor?.responsaveis) ? valor.responsaveis : [],
+          destinosInternos: Array.isArray(valor?.destinosInternos) ? valor.destinosInternos : [],
+          destinosExternos: Array.isArray(valor?.destinosExternos) ? valor.destinosExternos : []
         };
       } catch (error) {
         console.error('[SUPABASE][app_settings][TRAMITES_OPCOES][SELECT][ERRO]', error);
@@ -89,7 +91,9 @@
       const valor = JSON.parse(localStorage.getItem(OPCOES_STORAGE_KEY) || '{}');
       return {
         motivos: Array.isArray(valor?.motivos) ? valor.motivos : [],
-        responsaveis: Array.isArray(valor?.responsaveis) ? valor.responsaveis : []
+        responsaveis: Array.isArray(valor?.responsaveis) ? valor.responsaveis : [],
+        destinosInternos: Array.isArray(valor?.destinosInternos) ? valor.destinosInternos : [],
+        destinosExternos: Array.isArray(valor?.destinosExternos) ? valor.destinosExternos : []
       };
     } catch {
       return fallback;
@@ -419,19 +423,17 @@
 
               <div class="field">
                 <label>DESTINO / SETOR</label>
-                <select id="tra_destino" class="select">
-                  <option value="">Selecione…</option>
-                  <option>COTAÇÃO</option>
-                  <option>CONTROLADORIA</option>
-                  <option>DESPACHO PARA SECRETARIA</option>
-                  <option>EDITAL</option>
-                  <option>GERAL</option>
-                  <option>IRP</option>
-                  <option>LICITAÇÃO</option>
-                  <option>PLANEJAMENTO</option>
-                  <option>PROCURADORIA</option>
-                  <option>PROTOCOLO</option>
-                </select>
+                <div style="display:flex;gap:8px;align-items:center">
+                  <select id="tra_destino" class="select" style="flex:1">
+                    <option value="">Selecione…</option>
+                  </select>
+                  <button id="tra_destino_novo" type="button" class="btn">Novo</button>
+                </div>
+                <div id="tra_destino_novo_box" style="display:none;gap:8px;margin-top:8px">
+                  <input id="tra_destino_novo_texto" class="input" placeholder="Digite o novo destino ou setor" style="flex:1">
+                  <button id="tra_destino_novo_salvar" type="button" class="btn primary">Adicionar</button>
+                  <button id="tra_destino_novo_cancelar" type="button" class="btn">Cancelar</button>
+                </div>
               </div>
 
               <div class="field" style="grid-column:1/-1">
@@ -548,6 +550,13 @@
         input: container.querySelector('#tra_responsavel_novo_texto'),
         salvar: container.querySelector('#tra_responsavel_novo_salvar'),
         cancelar: container.querySelector('#tra_responsavel_novo_cancelar')
+      },
+      destino: {
+        abrir: container.querySelector('#tra_destino_novo'),
+        box: container.querySelector('#tra_destino_novo_box'),
+        input: container.querySelector('#tra_destino_novo_texto'),
+        salvar: container.querySelector('#tra_destino_novo_salvar'),
+        cancelar: container.querySelector('#tra_destino_novo_cancelar')
       }
     };
 
@@ -643,7 +652,7 @@
     // ação atual do modal: 'new' | 'edit' | 'tramitar' | 'finalizar' | 'novaEntrada'
     let currentAction = 'new';
 
-    const destinosInternos = [
+    const destinosInternosPadrao = [
       'COTAÇÃO',
       'EDITAL',
       'GERAL',
@@ -653,13 +662,15 @@
       'PROTOCOLO'
     ];
 
-    const destinosExternos = [
+    const destinosExternosPadrao = [
       'CONTROLADORIA',
       'DESPACHO PARA SECRETARIA',
       'PROCURADORIA',
       'SECRETARIA DE SAÚDE',
       'SECRETARIA SOLICITANTE'
     ];
+    const destinosInternos = valoresUnicosOrdenados([...destinosInternosPadrao, ...opcoesTramites.destinosInternos]);
+    const destinosExternos = valoresUnicosOrdenados([...destinosExternosPadrao, ...opcoesTramites.destinosExternos]);
 
     function tipoTramiteTexto(value) {
       return String(value || 'INTERNO').toUpperCase() === 'EXTERNO' ? 'EXTERNO' : 'INTERNO';
@@ -1322,6 +1333,7 @@
       fld.status.disabled = false;
       cadastroRapido.motivo.box.style.display = 'none';
       cadastroRapido.responsavel.box.style.display = 'none';
+      cadastroRapido.destino.box.style.display = 'none';
       currentAction = 'new';
     }
 
@@ -1568,6 +1580,49 @@
     populateResponsavelOptions();
     configurarCadastroRapido('motivo', fld.motivo, opcoesTramites.motivos);
     configurarCadastroRapido('responsavel', fld.responsavel, opcoesTramites.responsaveis);
+    const fecharCadastroDestino = () => {
+      cadastroRapido.destino.box.style.display = 'none';
+      cadastroRapido.destino.input.value = '';
+    };
+    cadastroRapido.destino.abrir.addEventListener('click', () => {
+      cadastroRapido.destino.box.style.display = 'flex';
+      cadastroRapido.destino.input.focus();
+    });
+    cadastroRapido.destino.cancelar.addEventListener('click', fecharCadastroDestino);
+    cadastroRapido.destino.salvar.addEventListener('click', async () => {
+      const novoDestino = cadastroRapido.destino.input.value.replace(/\s+/g, ' ').trim().toLocaleUpperCase('pt-BR');
+      if (!novoDestino) return alert('Digite o novo destino ou setor.');
+      const tipo = tipoTramiteTexto(fld.tipoTramite.value);
+      const colecao = tipo === 'EXTERNO' ? destinosExternos : destinosInternos;
+      const configuracao = tipo === 'EXTERNO' ? opcoesTramites.destinosExternos : opcoesTramites.destinosInternos;
+      if (!colecao.some(valor => valor.toLocaleUpperCase('pt-BR') === novoDestino)) colecao.push(novoDestino);
+      if (!configuracao.some(valor => String(valor).toLocaleUpperCase('pt-BR') === novoDestino)) configuracao.push(novoDestino);
+      cadastroRapido.destino.salvar.disabled = true;
+      try {
+        await salvarOpcoesTramites(opcoesTramites);
+        atualizarDestinosPorTipo(novoDestino);
+        if (![...selSetor.options].some(option => option.value === novoDestino)) {
+          const option = document.createElement('option');
+          option.value = novoDestino;
+          option.textContent = novoDestino;
+          selSetor.appendChild(option);
+        }
+        fecharCadastroDestino();
+        showToast('Destino / setor adicionado à lista.');
+      } catch (error) {
+        console.error('[TRAMITES][DESTINOS][SAVE][ERRO]', error);
+        alert('Não foi possível salvar o novo destino / setor.\n\nDetalhe: ' + (error?.message || error));
+      } finally {
+        cadastroRapido.destino.salvar.disabled = false;
+      }
+    });
+    cadastroRapido.destino.input.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        cadastroRapido.destino.salvar.click();
+      }
+      if (event.key === 'Escape') fecharCadastroDestino();
+    });
     if (selTipo && tipoFilter !== 'todos') selTipo.value = tipoFilter;
     renderTable();
 
