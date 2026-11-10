@@ -700,9 +700,17 @@
       if (!list.length) return 0;
       return Math.max(...list.map(x => Number(x.entrada || 0)));
     }
+    function ordemStatusTramite(value) {
+      const status = statusTramiteTexto(value);
+      if (status === 'CONCLUÍDO') return 3;
+      if (status === 'COM RESPONSÁVEL') return 2;
+      return 1;
+    }
     function compararTramitesRecentes(a, b) {
       const diferencaData = new Date(b.dataEntrada) - new Date(a.dataEntrada);
       if (diferencaData) return diferencaData;
+      const diferencaStatus = ordemStatusTramite(b.status) - ordemStatusTramite(a.status);
+      if (diferencaStatus) return diferencaStatus;
       return Number(b.ordemReal || 0) - Number(a.ordemReal || 0);
     }
     function getLatestForNumero(numero) {
@@ -747,6 +755,9 @@
  const db = new Date(b.dataEntrada);
 
  if (da - db !== 0) return da - db;
+
+ const diferencaStatus = ordemStatusTramite(a.status) - ordemStatusTramite(b.status);
+ if (diferencaStatus) return diferencaStatus;
 
  // 🔥 NOVO: usa ordem real de criação
  const oa = Number(a.ordemReal || 0);
@@ -845,6 +856,9 @@
  const db = new Date(b.dataEntrada);
 
  if (da - db !== 0) return da - db;
+
+ const diferencaStatus = ordemStatusTramite(a.status) - ordemStatusTramite(b.status);
+ if (diferencaStatus) return diferencaStatus;
 
  // 🔥 NOVO: usa ordem real de criação
  const oa = Number(a.ordemReal || 0);
