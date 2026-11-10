@@ -1545,22 +1545,22 @@
     }
 
     function populateMotivoFormOptions(selecionado = fld.motivo.value) {
-      const motivosUsados = (data || []).map(item => item.motivo);
-      preencherSelect(fld.motivo, valoresUnicosOrdenados([...motivosPadrao, ...opcoesTramites.motivos, ...motivosUsados]), selecionado);
+      preencherSelect(fld.motivo, valoresUnicosOrdenados([...motivosPadrao, ...opcoesTramites.motivos]), selecionado);
     }
 
     /* ---------- Inicial render ---------- */
     // popular select Responsável com valores únicos de data
     function populateResponsavelOptions() {
-      const nomes = valoresUnicosOrdenados([
-        ...opcoesTramites.responsaveis,
+      const nomes = valoresUnicosOrdenados(opcoesTramites.responsaveis);
+      const nomesHistoricos = valoresUnicosOrdenados([
+        ...nomes,
         ...(data || []).map(x => x.responsavel)
       ]);
       const selecionado = fld.responsavel.value;
       preencherSelect(fld.responsavel, nomes, selecionado);
       // limpar existentes (exceto a opção "todos")
       selResponsavel.querySelectorAll('option:not([value="todos"])').forEach(o => o.remove());
-      nomes.forEach(n => {
+      nomesHistoricos.forEach(n => {
         const opt = document.createElement('option');
         opt.value = n;
         opt.textContent = n;
@@ -1884,6 +1884,159 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
       subtitulo: 'Acompanhe os trâmites realizados dentro do setor.',
       tipoInicial: 'todos'
     });
+  }
+
+  async function initGerenciadorOpcoesTramites(container) {
+    if (typeof container === 'string') container = document.getElementById(container);
+    if (!container) throw new Error('Container inválido para o gerenciador de opções dos trâmites.');
+
+    const opcoes = await carregarOpcoesTramites();
+    const categorias = [
+      { chave: 'motivos', titulo: 'Motivos', singular: 'motivo' },
+      { chave: 'responsaveis', titulo: 'Responsáveis', singular: 'responsável' },
+      { chave: 'destinosInternos', titulo: 'Destinos / Setores internos', singular: 'destino interno' },
+      { chave: 'destinosExternos', titulo: 'Destinos / Setores externos', singular: 'destino externo' }
+    ];
+    categorias.forEach(({ chave }) => {
+      opcoes[chave] = Array.isArray(opcoes[chave]) ? opcoes[chave] : [];
+    });
+
+    container.innerHTML = `
+      <section class="wrap">
+        <header style="margin-bottom:16px">
+          <h2 style="margin:0 0 6px">Opções dos Trâmites</h2>
+          <div class="muted">Gerencie as opções personalizadas disponíveis no modal de trâmites.</div>
+        </header>
+        <div class="card" style="padding:14px;margin-bottom:16px;border-left:4px solid #2563eb">
+          <strong>Histórico preservado</strong>
+          <div class="muted" style="margin-top:4px">Alterar ou excluir uma opção não modifica os trâmites que já foram registrados.</div>
+        </div>
+        <div id="config_tramites_feedback" class="muted" style="min-height:22px;margin-bottom:8px"></div>
+        <div id="config_tramites_grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px"></div>
+      </section>
+    `;
+
+    const grid = container.querySelector('#config_tramites_grid');
+    const feedback = container.querySelector('#config_tramites_feedback');
+
+    function normalizarValor(valor) {
+      return String(valor || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('pt-BR');
+    }
+
+    function valoresOrdenados(chave) {
+      return Array.from(new Set(opcoes[chave].map(normalizarValor).filter(Boolean)))
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }
+
+    async function persistir(mensagem) {
+      categorias.forEach(({ chave }) => { opcoes[chave] = valoresOrdenados(chave); });
+      await salvarOpcoesTramites(opcoes);
+      feedback.textContent = mensagem;
+      feedback.style.color = '#166534';
+    }
+
+    function render() {
+      grid.innerHTML = '';
+      categorias.forEach(categoria => {
+        opcoes[categoria.chave] = valoresOrdenados(categoria.chave);
+        const card = document.createElement('section');
+        card.className = 'card';
+        card.style.padding = '16px';
+        card.dataset.categoria = categoria.chave;
+        card.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px">
+            <div>
+              <h3 style="margin:0">${categoria.titulo}</h3>
+              <small class="muted">${opcoes[categoria.chave].length} opção(ões) personalizada(s)</small>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input class="input" data-novo-input placeholder="Adicionar ${categoria.singular}" style="flex:1">
+            <button class="btn primary" type="button" data-adicionar>Adicionar</button>
+          </div>
+          <div data-lista></div>
+        `;
+
+        const lista = card.querySelector('[data-lista]');
+        if (!opcoes[categoria.chave].length) {
+          lista.innerHTML = '<div class="empty" style="padding:18px 8px">Nenhuma opção personalizada cadastrada.</div>';
+        } else {
+          opcoes[categoria.chave].forEach((valor, indice) => {
+            const linha = document.createElement('div');
+            linha.style.cssText = 'display:flex;gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--line)';
+            linha.innerHTML = `
+              <input class="input" data-valor style="flex:1">
+              <button class="btn" type="button" data-salvar>Salvar</button>
+              <button class="btn" type="button" data-excluir style="background:var(--danger,#dc2626);border-color:var(--danger,#dc2626);color:#fff">Excluir</button>
+            `;
+            linha.dataset.indice = String(indice);
+            linha.querySelector('[data-valor]').value = valor;
+            lista.appendChild(linha);
+          });
+        }
+        grid.appendChild(card);
+      });
+    }
+
+    grid.addEventListener('click', async event => {
+      const card = event.target.closest('[data-categoria]');
+      if (!card) return;
+      const categoria = categorias.find(item => item.chave === card.dataset.categoria);
+      if (!categoria) return;
+
+      try {
+        if (event.target.closest('[data-adicionar]')) {
+          const input = card.querySelector('[data-novo-input]');
+          const novoValor = normalizarValor(input.value);
+          if (!novoValor) return alert(`Digite o ${categoria.singular}.`);
+          if (opcoes[categoria.chave].some(valor => normalizarValor(valor) === novoValor)) {
+            return alert('Esta opção já está cadastrada.');
+          }
+          opcoes[categoria.chave].push(novoValor);
+          await persistir(`${categoria.titulo}: opção adicionada com sucesso.`);
+          render();
+          return;
+        }
+
+        const linha = event.target.closest('[data-indice]');
+        if (!linha) return;
+        const indice = Number(linha.dataset.indice);
+        const valorAtual = opcoes[categoria.chave][indice];
+
+        if (event.target.closest('[data-salvar]')) {
+          const novoValor = normalizarValor(linha.querySelector('[data-valor]').value);
+          if (!novoValor) return alert('A opção não pode ficar vazia.');
+          if (opcoes[categoria.chave].some((valor, posicao) => posicao !== indice && normalizarValor(valor) === novoValor)) {
+            return alert('Já existe outra opção com este nome.');
+          }
+          opcoes[categoria.chave][indice] = novoValor;
+          await persistir(`${categoria.titulo}: “${valorAtual}” foi alterado para “${novoValor}”.`);
+          render();
+          return;
+        }
+
+        if (event.target.closest('[data-excluir]')) {
+          if (!confirm(`Excluir “${valorAtual}” da lista de ${categoria.titulo.toLocaleLowerCase('pt-BR')}?\n\nOs trâmites já registrados não serão alterados.`)) return;
+          opcoes[categoria.chave].splice(indice, 1);
+          await persistir(`${categoria.titulo}: opção excluída com sucesso.`);
+          render();
+        }
+      } catch (error) {
+        console.error('[TRAMITES][CONFIGURACOES][SAVE][ERRO]', error);
+        feedback.textContent = `Erro ao salvar: ${error?.message || error}`;
+        feedback.style.color = '#b91c1c';
+        alert('Não foi possível salvar as opções dos trâmites.\n\nDetalhe: ' + (error?.message || error));
+      }
+    });
+
+    grid.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && event.target.matches('[data-novo-input]')) {
+        event.preventDefault();
+        event.target.closest('[data-categoria]').querySelector('[data-adicionar]').click();
+      }
+    });
+
+    render();
   }
 
   async function initTramitesGeral(container) {
@@ -2309,6 +2462,7 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
   window.initTramites = initTramites;
   window.initTramitesGeral = initTramitesGeral;
   window.initTramitesInterno = initTramitesInterno;
+  window.initGerenciadorOpcoesTramites = initGerenciadorOpcoesTramites;
 
 })();
 

@@ -67,6 +67,7 @@
   <div class="menu">
     <button class="menu-toggle">⚙️ Configurações</button>
     <div class="submenu">
+      <a href="#" id="menu-config-tramites">🧰 Opções dos Trâmites</a>
       <a href="#" id="menu-backup">💾 Backup do Sistema</a>
       <a href="#" id="menu-restore">📥 Restaurar Backup</a>
       <div class="menu submenu-menu">
@@ -122,7 +123,7 @@
   <script src="js/auth.js?v=3.0-fornecedor-pessoas-fix-20260904"></script>
   <script src="js/database.js?v=3.0-sincroniza-tramites-em-lote-20261109"></script>
   <script src="js/licitatorios.js?v=3.0-conciliacao-ata-irp-20260924"></script>
-  <script src="js/tramites.js?v=3.0-tipo-todos-padrao-20261110"></script>
+  <script src="js/tramites.js?v=3.0-gerenciador-opcoes-tramites-20261110"></script>
   <script>
     // Mantem os dados digitados em letras maiusculas, exceto campos de link/URL.
     document.addEventListener("input", (event) => {
@@ -160,6 +161,7 @@
     const menuMescladorEtiquetas = document.getElementById("menu-mesclador-etiquetas");
     const menuFornecedores = document.getElementById("menu-fornecedores");
     const menuProdutos = document.getElementById("menu-produtos");
+    const menuConfigTramites = document.getElementById("menu-config-tramites");
     // Novos menus
 const menuRelatorios = document.getElementById("menu-relatorios");
 const menuDashboard = document.getElementById("menu-dashboard");
@@ -178,6 +180,11 @@ menuFornecedores.addEventListener("click", (e) => {
 menuProdutos.addEventListener("click", (e) => {
   e.preventDefault();
   loadModule(initProdutos);
+});
+
+menuConfigTramites.addEventListener("click", (e) => {
+  e.preventDefault();
+  loadModule(initGerenciadorOpcoesTramites);
 });
 
 menuDashboard.addEventListener("click", (e) => {
