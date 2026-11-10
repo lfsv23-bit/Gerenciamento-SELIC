@@ -720,6 +720,9 @@
     function compararTramitesRecentes(a, b) {
       const diferencaData = new Date(b.dataEntrada) - new Date(a.dataEntrada);
       if (diferencaData) return diferencaData;
+      const movimentacaoA = Date.parse(a.movimentadoEm || '') || 0;
+      const movimentacaoB = Date.parse(b.movimentadoEm || '') || 0;
+      if (movimentacaoB !== movimentacaoA) return movimentacaoB - movimentacaoA;
       const diferencaStatus = ordemStatusTramite(b.status) - ordemStatusTramite(a.status);
       if (diferencaStatus) return diferencaStatus;
       return Number(b.ordemReal || 0) - Number(a.ordemReal || 0);
@@ -1413,11 +1416,29 @@
     fld.deleteBtn.addEventListener('click', async (ev) => { if (typeof onDelete === 'function') await onDelete(ev); });
 
     // Filtros de status (botões rápidos)
-    btnFiltroPendentes.addEventListener('click', () => { filtroAtual = 'pendentes'; renderTable(); });
-    btnFiltroDistribuidos.addEventListener('click', () => { filtroAtual = 'distribuidos'; renderTable(); });
-    btnFiltroConcluidos.addEventListener('click', () => { filtroAtual = 'concluidos'; renderTable(); });
-    btnFiltroAcervo.addEventListener('click', () => { filtroAtual = 'acervo'; renderTable(); });
-    btnFiltroTodos.addEventListener('click', () => { filtroAtual = 'todos'; renderTable(); });
+    function aplicarFiltroRapido(filtro) {
+      filtroAtual = filtro;
+      statusFilter = 'todos';
+      selStatus.value = 'todos';
+      renderTable();
+    }
+    btnFiltroPendentes.addEventListener('click', () => aplicarFiltroRapido('pendentes'));
+    btnFiltroDistribuidos.addEventListener('click', () => aplicarFiltroRapido('distribuidos'));
+    btnFiltroConcluidos.addEventListener('click', () => aplicarFiltroRapido('concluidos'));
+    btnFiltroAcervo.addEventListener('click', () => aplicarFiltroRapido('acervo'));
+    btnFiltroTodos.addEventListener('click', () => {
+      filtroAtual = 'todos';
+      statusFilter = 'todos';
+      setorFilter = 'todos';
+      motivoFilter = 'todos';
+      responsavelFilter = 'todos';
+      qInput.value = '';
+      selStatus.value = 'todos';
+      selSetor.value = 'todos';
+      selMotivo.value = 'todos';
+      selResponsavel.value = 'todos';
+      renderTable();
+    });
 
     // selects do painel
     selLimitDays.addEventListener('change', (e) => {
@@ -1731,6 +1752,7 @@
         item.id = genId();
         // gerar ordem real sequencial
 item.ordemReal = Date.now(); 
+item.movimentadoEm = new Date().toISOString();
 
 data.unshift(item);
 
@@ -1776,6 +1798,16 @@ if (item.entrada === 1 && tramitesDoProcesso.length === 0) {
 
       // salvar e atualizar UI
       await saveData(data);
+      if (window.isSupabaseConfigured?.()) {
+        const confirmados = await carregarTramitesInternosSupabase();
+        const confirmado = confirmados.some(registro => String(registro.id) === String(item.id));
+        if (!confirmado) {
+          console.error('[SUPABASE][tramites_internos][CONFIRMACAO][NAO_ENCONTRADO]', { item });
+          alert('O trâmite foi enviado, mas não foi localizado novamente no Supabase. Atualize a página e verifique o registro antes de repetir a operação.');
+          return;
+        }
+        data = confirmados;
+      }
       populateMotivoFormOptions();
       populateResponsavelOptions();
       renderTable();
