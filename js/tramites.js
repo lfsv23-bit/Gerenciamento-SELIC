@@ -289,6 +289,7 @@
                 <th>SECRETARIA</th>
                 <th>DATA ENTRADA</th>
                 <th>OBJETO</th>
+                <th>SITUAÇÃO DO PROCESSO</th>
                 <th>RESPONSÁVEL</th>
                 <th>TIPO</th>
                 <th>STATUS</th>
@@ -340,6 +341,11 @@
               <div class="field" style="grid-column:1/-1">
                 <label>OBJETO</label>
                 <input id="tra_objeto" class="input" readonly>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label>SITUAÇÃO DO PROCESSO</label>
+                <input id="tra_situacao_processo" class="input" placeholder="Informe a situação atual do processo">
+                <small class="muted">Ao salvar o trâmite, esta informação também será atualizada em Processos Licitatórios.</small>
               </div>
               <div class="field">
                 <label>DATA DE ENTRADA</label>
@@ -514,6 +520,7 @@
       numero: container.querySelector('#tra_numero'),
       secretaria: container.querySelector('#tra_secretaria'),
       objeto: container.querySelector('#tra_objeto'),
+      situacaoProcesso: container.querySelector('#tra_situacao_processo'),
       dataEntrada: container.querySelector('#tra_dataEntrada'),
       motivo: container.querySelector('#tra_motivo'),
       responsavel: container.querySelector('#tra_responsavel'),
@@ -975,7 +982,8 @@
 
         // filtro por search
         if (q) {
-          const text = `${r.numero||''} ${r.objeto||''} ${r.secretaria||''} ${r.motivo||''} ${r.responsavel||''} ${tipoTramiteTexto(r.tipoTramite)} ${r.destino||''}`.toLowerCase();
+          const situacaoAtual = encontrarProcessoCarregado(r.numero)?.situacao || r.situacaoProcesso || '';
+          const text = `${r.numero||''} ${r.objeto||''} ${r.secretaria||''} ${situacaoAtual} ${r.motivo||''} ${r.responsavel||''} ${tipoTramiteTexto(r.tipoTramite)} ${r.destino||''}`.toLowerCase();
           if (!text.includes(q)) return false;
         }
 
@@ -1034,6 +1042,7 @@
           status === 'CONCLUÍDO' ? 'status-concluido' : '';
 
         const entradaDisplay = Number(r.entrada || 0) || 1;
+        const situacaoProcesso = encontrarProcessoCarregado(r.numero)?.situacao || r.situacaoProcesso || '';
 
         // determinar se mostra o botão Nova Entrada: só se o último (maisRecentes) estiver CONCLUÍDO
         const showNovaEntrada = status === 'CONCLUÍDO' && !r.emAcervo;
@@ -1047,6 +1056,7 @@
           <td>${r.secretaria || ''}</td>
           <td>${fmtDate(r.dataPrimeiraEntrada || r.dataEntrada) || ''}</td>
 <td>${r.objeto || ''}</td>
+          <td>${situacaoProcesso}</td>
           <td>${r.responsavel || ''}</td>
           <td>${tipoTramiteTexto(r.tipoTramite)}</td>
           <td><span class="status ${statusColor}">${statusExibido}</span></td>
@@ -1167,6 +1177,7 @@
       fld.numero.value = proc.numero || '';
       fld.secretaria.value = proc.secretaria || '';
       fld.objeto.value = proc.objeto || '';
+      fld.situacaoProcesso.value = proc.situacao || '';
 
       // determinar entrada atual: se existe, usar max entrada; se não, 1
       const maxEntrada = getMaxEntrada(proc.numero);
@@ -1246,6 +1257,7 @@
       fld.numero.value = latest.numero || numero;
       fld.secretaria.value = latest.secretaria || '';
       fld.objeto.value = latest.objeto || '';
+      fld.situacaoProcesso.value = encontrarProcessoCarregado(numero)?.situacao || latest.situacaoProcesso || '';
       fld.entrada.value = novaEntrada;
       fld.entradaDisplay.value = novaEntrada;
       fld.dataEntrada.value = new Date().toISOString().slice(0, 10);
@@ -1281,6 +1293,7 @@
       fld.numero.value = '';
       fld.secretaria.value = '';
       fld.objeto.value = '';
+      fld.situacaoProcesso.value = '';
       fld.dataEntrada.value = '';
       fld.motivo.value = '';
       fld.responsavel.value = '';
@@ -1304,6 +1317,7 @@
       fld.numero.value = item.numero || '';
       fld.secretaria.value = item.secretaria || '';
       fld.objeto.value = item.objeto || '';
+      fld.situacaoProcesso.value = encontrarProcessoCarregado(item.numero)?.situacao || item.situacaoProcesso || '';
       fld.dataEntrada.value = item.dataEntrada && item.dataEntrada.includes('-') ? item.dataEntrada.slice(0,10) : item.dataEntrada;
       fld.motivo.value = item.motivo || '';
       fld.responsavel.value = item.responsavel || '';
@@ -1552,6 +1566,7 @@
         numero: fld.numero.value.trim(),
         secretaria: fld.secretaria.value.trim(),
         objeto: fld.objeto.value.trim(),
+        situacaoProcesso: fld.situacaoProcesso.value.trim(),
         dataEntrada: fld.dataEntrada.value.trim(),
         motivo: fld.motivo.value.trim(),
         responsavel: fld.responsavel.value.trim(),
@@ -1574,6 +1589,7 @@
         alert('Processo não encontrado na lista atual de Processos Licitatórios. Feche o formulário e abra a busca novamente.');
         return;
       }
+      proc.situacao = item.situacaoProcesso;
 
       // Evita abrir outro recebimento enquanto a atividade atual ainda está no setor.
       const tramitesMesmoNumero = data.filter(t =>
@@ -1623,6 +1639,20 @@
         } else {
           alert('Registro para edição não encontrado.');
           return;
+        }
+        const processos = carregarProcessosLicitatorios();
+        const processoIdx = processos.findIndex(processo =>
+          String(processo.numero || '').trim().toLowerCase() === String(proc.numero || '').trim().toLowerCase()
+        );
+        if (processoIdx >= 0) {
+          processos[processoIdx].situacao = item.situacaoProcesso;
+          processosCache = processos;
+          window.__processosLicitatoriosData = processos;
+          if (window.isSupabaseConfigured?.() && window.AppDatabase?.saveProcessoCompleto) {
+            await window.AppDatabase.saveProcessoCompleto(processos[processoIdx]);
+          } else {
+            localStorage.setItem(PROCESSOS_STORAGE_KEY, JSON.stringify(processos));
+          }
         }
       } else {
         // criar novo registro (tramitar, finalizar, novaEntrada ou novo)
