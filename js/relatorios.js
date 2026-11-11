@@ -129,7 +129,7 @@
           <button id="rel_export_xlsx" class="btn primary">Exportar XLSX</button>
           <button id="rel_export_pdf" class="btn">Exportar PDF</button>
           <label style="margin-left:8px;font-size:13px;color:var(--muted)"><input type="checkbox" id="rel_show_concluidos"> Mostrar concluídos</label>
-          <label style="font-size:13px;color:var(--muted)"><input type="checkbox" id="rel_show_acervo"> Incluir acervo do setor</label>
+          <label style="font-size:13px;color:var(--muted)"><input type="checkbox" id="rel_show_acervo"> Incluir arquivo</label>
         </div>
 
         <div id="rel_area"></div>
@@ -274,7 +274,7 @@
                   <td>${(r.secretaria||'')}</td>
                   <td>${(r.objetoResumo||'')}</td>
                   <td>${(r.setorAtual||'')}</td>
-                  <td>${r.emAcervo ? 'ACERVO DO SETOR' : (r.status||'')}</td>
+                  <td>${r.emAcervo ? 'ARQUIVO' : (r.status||'')}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -408,7 +408,7 @@
       }));
       const sheetRel = dataset.map(r => ({
         numero: r.numero, dataEntrada: r.dataEntrada, diasNoSetor: r.diasNoSetor, responsavel: r.responsavel,
-        motivo: r.motivo, parecer: r.parecer, secretaria: r.secretaria, objetoResumo: r.objetoResumo, setorAtual: r.setorAtual, status: r.emAcervo ? 'ACERVO DO SETOR' : r.status, observacao: r.observacao
+        motivo: r.motivo, parecer: r.parecer, secretaria: r.secretaria, objetoResumo: r.objetoResumo, setorAtual: r.setorAtual, status: r.emAcervo ? 'ARQUIVO' : r.status, observacao: r.observacao
       }));
 
       exportToXLSX('relatorio_processos_no_setor.xlsx', {Processos: sheetProcs, Tramites: sheetTram, 'Processos no Setor': sheetRel});

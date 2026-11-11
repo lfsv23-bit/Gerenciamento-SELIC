@@ -195,11 +195,15 @@
               <div id="tra_ind_distribuidos" class="value">0</div>
             </div>
             <div class="tra-indicator">
-              <div class="label">Acervo do setor</div>
+              <div class="label">Arquivo</div>
               <div id="tra_ind_acervo" class="value">0</div>
             </div>
             <div class="tra-indicator">
-              <div class="label">⏱️ Acima do limite</div>
+              <div class="label">IRP</div>
+              <div id="tra_ind_irp" class="value">0</div>
+            </div>
+            <div class="tra-indicator">
+              <div class="label">⏱️ Recebidos acima do limite</div>
               <div id="tra_ind_acima" class="value">0</div>
             </div>
 
@@ -274,7 +278,9 @@
             <button id="filtro_pendentes" class="btn primary">Aguardando distribuição</button>
             <button id="filtro_distribuidos" class="btn">Com responsável</button>
             <button id="filtro_concluidos" class="btn">Atividades concluídas</button>
-            <button id="filtro_acervo" class="btn">Acervo</button>
+            <button id="filtro_recebidos" class="btn">Recebidos</button>
+            <button id="filtro_irp" class="btn">IRP</button>
+            <button id="filtro_acervo" class="btn">Arquivo</button>
             <button id="filtro_todos" class="btn">Todos</button>
           </div>
         </div>
@@ -295,6 +301,7 @@
                 <th>DATA ÚLTIMA MOVIMENTAÇÃO</th>
                 <th>OBJETO</th>
                 <th>SITUAÇÃO DO PROCESSO</th>
+                <th>VÍNCULO COM O SETOR</th>
                 <th>RESPONSÁVEL</th>
                 <th>TIPO</th>
                 <th>STATUS</th>
@@ -351,6 +358,14 @@
                 <label>SITUAÇÃO DO PROCESSO</label>
                 <input id="tra_situacao_processo" class="input" placeholder="Informe a situação atual do processo">
                 <small class="muted">Ao salvar o trâmite, esta informação também será atualizada em Processos Licitatórios.</small>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label>VÍNCULO COM O SETOR</label>
+                <select id="tra_vinculo_setor" class="select">
+                  <option value="RECEBIDO">RECEBIDO DE OUTRO SETOR</option>
+                  <option value="IRP">IRP</option>
+                </select>
+                <small class="muted">IRPs não entram no indicador de processos recebidos acima do prazo.</small>
               </div>
               <div class="field">
                 <label>DATA DE ENTRADA</label>
@@ -453,7 +468,7 @@
       <dialog id="tra_acervo_dlg" style="width:560px;max-width:95%">
         <form id="tra_acervo_form">
           <div class="modal-head" style="display:flex;justify-content:space-between;align-items:center">
-            <strong>Enviar ao acervo do setor</strong>
+            <strong>Enviar ao arquivo</strong>
             <button id="tra_acervo_close" class="btn ghost" type="button">Fechar</button>
           </div>
           <div class="modal-body">
@@ -479,7 +494,7 @@
           </div>
           <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px;border-top:1px solid var(--line)">
             <button id="tra_acervo_cancel" class="btn" type="button">Cancelar</button>
-            <button id="tra_acervo_save" class="btn primary" type="submit">Enviar ao acervo</button>
+            <button id="tra_acervo_save" class="btn primary" type="submit">Enviar ao arquivo</button>
           </div>
         </form>
       </dialog>
@@ -524,6 +539,7 @@
       secretaria: container.querySelector('#tra_secretaria'),
       objeto: container.querySelector('#tra_objeto'),
       situacaoProcesso: container.querySelector('#tra_situacao_processo'),
+      vinculoSetor: container.querySelector('#tra_vinculo_setor'),
       dataEntrada: container.querySelector('#tra_dataEntrada'),
       motivo: container.querySelector('#tra_motivo'),
       responsavel: container.querySelector('#tra_responsavel'),
@@ -569,6 +585,7 @@
     const indPendentes = container.querySelector('#tra_ind_pendentes');
     const indDistribuidos = container.querySelector('#tra_ind_distribuidos');
     const indAcervo = container.querySelector('#tra_ind_acervo');
+    const indIrp = container.querySelector('#tra_ind_irp');
     const indAcima = container.querySelector('#tra_ind_acima');
     const selLimitDays = container.querySelector('#tra_limit_days');
     const selStatus = container.querySelector('#tra_filter_status');
@@ -580,6 +597,8 @@
     const btnFiltroPendentes = container.querySelector('#filtro_pendentes');
     const btnFiltroDistribuidos = container.querySelector('#filtro_distribuidos');
     const btnFiltroConcluidos = container.querySelector('#filtro_concluidos');
+    const btnFiltroRecebidos = container.querySelector('#filtro_recebidos');
+    const btnFiltroIrp = container.querySelector('#filtro_irp');
     const btnFiltroAcervo = container.querySelector('#filtro_acervo');
     const btnFiltroTodos = container.querySelector('#filtro_todos');
 
@@ -674,6 +693,16 @@
 
     function tipoTramiteTexto(value) {
       return String(value || 'INTERNO').toUpperCase() === 'EXTERNO' ? 'EXTERNO' : 'INTERNO';
+    }
+
+    function vinculoSetorTexto(value) {
+      return String(value || '').trim().toLocaleUpperCase('pt-BR') === 'IRP' ? 'IRP' : 'RECEBIDO';
+    }
+
+    function vinculoSetorDoRegistro(registro) {
+      return vinculoSetorTexto(
+        encontrarProcessoCarregado(registro?.numero)?.vinculoSetor || registro?.vinculoSetor
+      );
     }
 
     function atualizarDestinosPorTipo(valorSelecionado = '') {
@@ -812,6 +841,7 @@
             </div>
             <div style="margin-top:8px">
               <strong>Situação:</strong> ${processo.situacao || '-'} &nbsp;|&nbsp;
+              <strong>Vínculo:</strong> ${vinculoSetorTexto(processo.vinculoSetor) === 'IRP' ? 'IRP' : 'RECEBIDO DE OUTRO SETOR'} &nbsp;|&nbsp;
               <strong>Valor Estimado:</strong> ${processo.valorEstimado != null ? 'R$ ' + Number(processo.valorEstimado).toLocaleString('pt-BR', {minimumFractionDigits:2}) : '-'}
             </div>
             <div style="margin-top:6px"><strong>Recurso:</strong> ${(processo.recurso || []).join(', ') || '-'}</div>
@@ -832,7 +862,7 @@
           blocos[e].forEach(t => {
             html += `
               <div style="padding:10px;border-bottom:1px solid var(--line)">
-                <div><strong>Status:</strong> ${t.emAcervo ? 'ACERVO DO SETOR' : (t.status || '-')} &nbsp; <small style="color:var(--muted)">(${fmtDate(t.dataEntrada)})</small></div>
+                <div><strong>Status:</strong> ${t.emAcervo ? 'ARQUIVO' : (t.status || '-')} &nbsp; <small style="color:var(--muted)">(${fmtDate(t.dataEntrada)})</small></div>
                 <div><strong>Motivo:</strong> ${t.motivo || '-'}</div>
                 <div><strong>Responsável:</strong> ${t.responsavel || '-'}</div>
                 ${t.emAcervo ? `<div><strong>Motivo do arquivamento:</strong> ${t.motivoArquivamento || '-'}</div>` : ''}
@@ -1002,17 +1032,20 @@
       // Aplica filtros (pendentes / concluídos) + novos filtros do painel
       filtered = maisRecentes.filter(r => {
         const status = statusTramiteTexto(r.status);
+        const vinculoSetor = vinculoSetorDoRegistro(r);
 
         // filtro por botão (pendentes / concluidos / todos)
         if (filtroAtual === 'pendentes' && status !== 'AGUARDANDO DISTRIBUIÇÃO') return false;
         if (filtroAtual === 'distribuidos' && status !== 'COM RESPONSÁVEL') return false;
         if (filtroAtual === 'concluidos' && (status !== 'CONCLUÍDO' || r.emAcervo)) return false;
+        if (filtroAtual === 'recebidos' && (vinculoSetor !== 'RECEBIDO' || r.emAcervo)) return false;
+        if (filtroAtual === 'irp' && (vinculoSetor !== 'IRP' || r.emAcervo)) return false;
         if (filtroAtual === 'acervo' && !r.emAcervo) return false;
 
         // filtro por search
         if (q) {
           const situacaoAtual = encontrarProcessoCarregado(r.numero)?.situacao || r.situacaoProcesso || '';
-          const text = `${r.numero||''} ${r.objeto||''} ${r.secretaria||''} ${situacaoAtual} ${r.motivo||''} ${r.responsavel||''} ${tipoTramiteTexto(r.tipoTramite)} ${r.destino||''}`.toLowerCase();
+          const text = `${r.numero||''} ${r.objeto||''} ${r.secretaria||''} ${situacaoAtual} ${vinculoSetor} ${r.motivo||''} ${r.responsavel||''} ${tipoTramiteTexto(r.tipoTramite)} ${r.destino||''}`.toLowerCase();
           if (!text.includes(q)) return false;
         }
 
@@ -1048,9 +1081,11 @@
       const pendentesCount = maisRecentes.filter(cur => !cur.emAcervo && statusTramiteTexto(cur.status) === 'AGUARDANDO DISTRIBUIÇÃO').length;
       const distribuidosCount = maisRecentes.filter(cur => !cur.emAcervo && statusTramiteTexto(cur.status) === 'COM RESPONSÁVEL').length;
       const acervoCount = maisRecentes.filter(cur => cur.emAcervo).length;
+      const irpCount = maisRecentes.filter(cur => !cur.emAcervo && vinculoSetorDoRegistro(cur) === 'IRP').length;
 
       const acimaCount = filtered.reduce((acc, cur) => {
         if (cur.emAcervo) return acc;
+        if (vinculoSetorDoRegistro(cur) === 'IRP') return acc;
         const dias = diasNoSetor(cur.dataEntrada);
         if (dias >= limitDays) return acc + 1;
         return acc;
@@ -1059,12 +1094,13 @@
       indPendentes.textContent = pendentesCount;
       indDistribuidos.textContent = distribuidosCount;
       indAcervo.textContent = acervoCount;
+      indIrp.textContent = irpCount;
       indAcima.textContent = acimaCount;
 
       // Renderiza APENAS o trâmite mais recente de cada processo (da entrada atual)
       filtered.forEach((r) => {
         const status = statusTramiteTexto(r.status);
-        const statusExibido = r.emAcervo ? 'ACERVO DO SETOR' : status;
+        const statusExibido = r.emAcervo ? 'ARQUIVO' : status;
         const statusColor =
           status === 'AGUARDANDO DISTRIBUIÇÃO' ? 'status-aguardando' :
           status === 'COM RESPONSÁVEL' ? 'status-andamento' :
@@ -1072,6 +1108,7 @@
 
         const entradaDisplay = Number(r.entrada || 0) || 1;
         const situacaoProcesso = encontrarProcessoCarregado(r.numero)?.situacao || r.situacaoProcesso || '';
+        const vinculoSetor = vinculoSetorDoRegistro(r);
 
         // determinar se mostra o botão Nova Entrada: só se o último (maisRecentes) estiver CONCLUÍDO
         const showNovaEntrada = status === 'CONCLUÍDO' && !r.emAcervo;
@@ -1087,6 +1124,7 @@
           <td>${fmtDate(r.dataEntrada) || ''}</td>
 <td>${r.objeto || ''}</td>
           <td>${situacaoProcesso}</td>
+          <td>${vinculoSetor === 'IRP' ? 'IRP' : 'RECEBIDO DE OUTRO SETOR'}</td>
           <td>${r.responsavel || ''}</td>
           <td>${tipoTramiteTexto(r.tipoTramite)}</td>
           <td><span class="status ${statusColor}">${statusExibido}</span></td>
@@ -1096,7 +1134,7 @@
             ${status === 'AGUARDANDO DISTRIBUIÇÃO' ? `<button class="btn btn-tramitar" data-tramitar="${r.id}">Distribuir</button>` : ''}
             ${status === 'COM RESPONSÁVEL' ? `<button class="btn btn-tramitar" data-tramitar="${r.id}">Redistribuir</button>` : ''}
             ${status === 'COM RESPONSÁVEL' ? `<button class="btn btn-finalizar" data-finalizar="${r.id}">Concluir atividade</button>` : ''}
-            ${status === 'CONCLUÍDO' && !r.emAcervo ? `<button class="btn" data-acervo="${r.id}">Enviar ao acervo</button>` : ''}
+            ${status === 'CONCLUÍDO' && !r.emAcervo ? `<button class="btn" data-acervo="${r.id}">Enviar ao arquivo</button>` : ''}
             ${showNovaEntrada ? `<button class="btn btn-novaentrada" data-novaentrada="${r.numero}" title="Nova Entrada">Nova Entrada</button>` : ''}
           </td>
         `;
@@ -1208,6 +1246,7 @@
       fld.secretaria.value = proc.secretaria || '';
       fld.objeto.value = proc.objeto || '';
       fld.situacaoProcesso.value = proc.situacao || '';
+      fld.vinculoSetor.value = vinculoSetorTexto(proc.vinculoSetor);
 
       // determinar entrada atual: se existe, usar max entrada; se não, 1
       const maxEntrada = getMaxEntrada(proc.numero);
@@ -1288,6 +1327,7 @@
       fld.secretaria.value = latest.secretaria || '';
       fld.objeto.value = latest.objeto || '';
       fld.situacaoProcesso.value = encontrarProcessoCarregado(numero)?.situacao || latest.situacaoProcesso || '';
+      fld.vinculoSetor.value = vinculoSetorTexto(encontrarProcessoCarregado(numero)?.vinculoSetor || latest.vinculoSetor);
       fld.entrada.value = novaEntrada;
       fld.entradaDisplay.value = novaEntrada;
       fld.dataEntrada.value = new Date().toISOString().slice(0, 10);
@@ -1305,7 +1345,7 @@
       const item = data.find(registro => String(registro.id) === String(id));
       if (!item) return alert('Trâmite não encontrado.');
       if (statusTramiteTexto(item.status) !== 'CONCLUÍDO') {
-        return alert('Conclua primeiro a atividade do setor antes de enviar o documento ao acervo.');
+        return alert('Conclua primeiro a atividade do setor antes de enviar o documento ao arquivo.');
       }
       acervoId.value = item.id;
       acervoData.value = new Date().toISOString().slice(0, 10);
@@ -1324,6 +1364,7 @@
       fld.secretaria.value = '';
       fld.objeto.value = '';
       fld.situacaoProcesso.value = '';
+      fld.vinculoSetor.value = 'RECEBIDO';
       fld.dataEntrada.value = '';
       fld.motivo.value = '';
       fld.responsavel.value = '';
@@ -1349,6 +1390,7 @@
       fld.secretaria.value = item.secretaria || '';
       fld.objeto.value = item.objeto || '';
       fld.situacaoProcesso.value = encontrarProcessoCarregado(item.numero)?.situacao || item.situacaoProcesso || '';
+      fld.vinculoSetor.value = vinculoSetorTexto(encontrarProcessoCarregado(item.numero)?.vinculoSetor || item.vinculoSetor);
       fld.dataEntrada.value = item.dataEntrada && item.dataEntrada.includes('-') ? item.dataEntrada.slice(0,10) : item.dataEntrada;
       fld.motivo.value = item.motivo || '';
       fld.responsavel.value = item.responsavel || '';
@@ -1434,6 +1476,8 @@
     btnFiltroPendentes.addEventListener('click', () => aplicarFiltroRapido('pendentes'));
     btnFiltroDistribuidos.addEventListener('click', () => aplicarFiltroRapido('distribuidos'));
     btnFiltroConcluidos.addEventListener('click', () => aplicarFiltroRapido('concluidos'));
+    btnFiltroRecebidos.addEventListener('click', () => aplicarFiltroRapido('recebidos'));
+    btnFiltroIrp.addEventListener('click', () => aplicarFiltroRapido('irp'));
     btnFiltroAcervo.addEventListener('click', () => aplicarFiltroRapido('acervo'));
     btnFiltroTodos.addEventListener('click', () => {
       filtroAtual = 'todos';
@@ -1487,7 +1531,7 @@
     formAcervo.addEventListener('submit', async event => {
       event.preventDefault();
       const origem = data.find(registro => String(registro.id) === String(acervoId.value));
-      if (!origem) return alert('Não foi possível localizar o trâmite que será enviado ao acervo.');
+      if (!origem) return alert('Não foi possível localizar o trâmite que será enviado ao arquivo.');
       if (!acervoData.value) return alert('Informe a data do arquivamento.');
       if (!acervoResponsavel.value.trim()) return alert('Informe o responsável pelo arquivamento.');
       if (!acervoMotivo.value.trim()) return alert('Informe o motivo do arquivamento.');
@@ -1496,7 +1540,7 @@
         ...origem,
         id: genId(),
         dataEntrada: acervoData.value,
-        motivo: 'ENVIO AO ACERVO DO SETOR',
+        motivo: 'ENVIO AO ARQUIVO',
         responsavel: acervoResponsavel.value.trim(),
         status: 'CONCLUÍDO',
         obs: acervoObs.value.trim(),
@@ -1511,7 +1555,7 @@
         await saveData(data);
         renderTable();
         dlgAcervo.close();
-        showToast('Documento enviado ao acervo do setor.');
+        showToast('Documento enviado ao arquivo.');
       } catch (error) {
         data = data.filter(registro => registro.id !== registroAcervo.id);
       }
@@ -1670,6 +1714,7 @@
         secretaria: fld.secretaria.value.trim(),
         objeto: fld.objeto.value.trim(),
         situacaoProcesso: fld.situacaoProcesso.value.trim(),
+        vinculoSetor: vinculoSetorTexto(fld.vinculoSetor.value),
         dataEntrada: fld.dataEntrada.value.trim(),
         motivo: fld.motivo.value.trim(),
         responsavel: fld.responsavel.value.trim(),
@@ -1693,6 +1738,7 @@
         return;
       }
       proc.situacao = item.situacaoProcesso;
+      proc.vinculoSetor = item.vinculoSetor;
 
       // Evita abrir outro recebimento enquanto a atividade atual ainda está no setor.
       const tramitesMesmoNumero = data.filter(t =>
@@ -1749,6 +1795,7 @@
         );
         if (processoIdx >= 0) {
           processos[processoIdx].situacao = item.situacaoProcesso;
+          processos[processoIdx].vinculoSetor = item.vinculoSetor;
           processosCache = processos;
           window.__processosLicitatoriosData = processos;
           if (window.isSupabaseConfigured?.() && window.AppDatabase?.saveProcessoCompleto) {
@@ -1781,6 +1828,7 @@ data.unshift(item);
         const idx = all.findIndex(x => x.numero === proc.numero);
         if (idx >= 0) {
           all[idx].qtdEntradas = proc.qtdEntradas;
+          all[idx].vinculoSetor = item.vinculoSetor;
           processosCache = all;
           window.__processosLicitatoriosData = all;
           if (window.isSupabaseConfigured?.() && window.AppDatabase?.saveProcessoCompleto) {
