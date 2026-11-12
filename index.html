@@ -884,20 +884,33 @@ btnMerge.addEventListener("click", async () => {
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
               <button id="mesc_etq_importar" class="btn primary" type="button">Importar etiquetas TXT</button>
               <button id="mesc_etq_limpar" class="btn" type="button">Limpar</button>
-              <button id="mesc_etq_baixar" class="btn" type="button" disabled>Exportar TXT Único</button>
+              <button id="mesc_etq_baixar" class="btn" type="button" disabled>Exportar todas</button>
+              <button id="mesc_etq_baixar_ano" class="btn" type="button" disabled>Exportar ano selecionado</button>
               <input id="mesc_etq_input" type="file" accept=".txt,text/plain" multiple style="display:none">
             </div>
             <div id="mesc_etq_status" class="muted" style="font-size:13px;margin-top:10px">Nenhuma etiqueta importada.</div>
           </div>
 
           <div class="card" style="margin-top:14px">
-            <h3 style="margin-top:0">Etiquetas encontradas</h3>
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:end;flex-wrap:wrap;margin-bottom:12px">
+              <h3 style="margin:0">Etiquetas encontradas</h3>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+                <label class="field" style="margin:0;min-width:150px"><span>Ano</span><select id="mesc_etq_ano" class="select"><option value="">Todos os anos</option></select></label>
+                <label class="field" style="margin:0;min-width:280px"><span>Pesquisar</span><input id="mesc_etq_busca" class="input" placeholder="Processo, interessado ou assunto"></label>
+                <label class="field" style="margin:0;min-width:110px"><span>Por página</span><select id="mesc_etq_por_pagina" class="select"><option>50</option><option selected>100</option><option>250</option><option>500</option></select></label>
+              </div>
+            </div>
             <div id="mesc_etq_preview" class="empty">Importe um ou mais arquivos TXT para visualizar as etiquetas.</div>
+            <div id="mesc_etq_paginacao" style="display:none;justify-content:flex-end;align-items:center;gap:8px;margin-top:12px">
+              <button id="mesc_etq_anterior" class="btn" type="button">Anterior</button>
+              <span id="mesc_etq_pagina" class="muted"></span>
+              <button id="mesc_etq_proxima" class="btn" type="button">Próxima</button>
+            </div>
           </div>
 
           <div class="card" style="margin-top:14px">
             <h3 style="margin-top:0">TXT mesclado</h3>
-            <textarea id="mesc_etq_output" class="input" rows="14" readonly placeholder="O TXT consolidado aparecerá aqui."></textarea>
+            <textarea id="mesc_etq_output" class="input" rows="8" readonly placeholder="Uma pequena prévia aparecerá aqui. O arquivo completo será montado somente ao exportar."></textarea>
           </div>
         </section>
       `;
@@ -906,22 +919,35 @@ btnMerge.addEventListener("click", async () => {
       const btnImportar = container.querySelector('#mesc_etq_importar');
       const btnLimpar = container.querySelector('#mesc_etq_limpar');
       const btnBaixar = container.querySelector('#mesc_etq_baixar');
+      const btnBaixarAno = container.querySelector('#mesc_etq_baixar_ano');
       const status = container.querySelector('#mesc_etq_status');
       const preview = container.querySelector('#mesc_etq_preview');
       const output = container.querySelector('#mesc_etq_output');
+      const filtroAno = container.querySelector('#mesc_etq_ano');
+      const busca = container.querySelector('#mesc_etq_busca');
+      const porPagina = container.querySelector('#mesc_etq_por_pagina');
+      const paginacao = container.querySelector('#mesc_etq_paginacao');
+      const paginaTexto = container.querySelector('#mesc_etq_pagina');
+      const btnAnterior = container.querySelector('#mesc_etq_anterior');
+      const btnProxima = container.querySelector('#mesc_etq_proxima');
       let etiquetas = [];
-      let txtFinal = '';
+      let paginaAtual = 1;
+      const liberarInterface = () => new Promise(resolve => requestAnimationFrame(() => resolve()));
+      const escMesclador = valor => String(valor || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 
-      function extrairEtiquetasMesclador(texto) {
+      async function extrairEtiquetasMesclador(texto, nomeArquivo) {
         const resultado = [];
         const blocos = String(texto || '').split('PROCESSO:');
 
-        blocos.forEach(bloco => {
+        for (let indice = 0; indice < blocos.length; indice++) {
+          let bloco = blocos[indice];
           bloco = bloco.trim();
-          if (!bloco) return;
+          if (!bloco) continue;
 
           const numeroMatch = bloco.match(/0*(\d+)\s*\/\s*(\d{4})/);
-          if (!numeroMatch) return;
+          if (!numeroMatch) continue;
 
           const dataMatch = bloco.match(/DATA:\s*(\d{2}\/\d{2}\/\d{4})/i);
           const nomeMatch = bloco.match(/NOME:\s*(.*?)(?=ASSUNTO:)/is);
@@ -935,7 +961,11 @@ btnMerge.addEventListener("click", async () => {
             assunto: assuntoMatch ? assuntoMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : '',
             sumula: sumulaMatch ? sumulaMatch[1].replace(/\s+/g, ' ').trim().toUpperCase() : ''
           });
-        });
+          if (indice && indice % 1000 === 0) {
+            status.textContent = `Lendo ${nomeArquivo}: ${indice.toLocaleString('pt-BR')} de ${blocos.length.toLocaleString('pt-BR')} blocos...`;
+            await liberarInterface();
+          }
+        }
 
         return resultado;
       }
@@ -945,19 +975,24 @@ btnMerge.addEventListener("click", async () => {
         return match ? `${match[1]}/${match[2]}` : '';
       }
 
-      function mesclarEtiquetasSemDuplicidade(listaAtual, novas) {
-        const mapa = new Map();
+      async function mesclarEtiquetasSemDuplicidade(listaAtual, novas) {
+        const mapa = new Map(listaAtual.map(etiqueta => [normalizarNumeroEtiquetaMesclador(etiqueta.numero), etiqueta]));
         let duplicadas = 0;
 
-        [...listaAtual, ...novas].forEach(etiqueta => {
+        for (let indice = 0; indice < novas.length; indice++) {
+          const etiqueta = novas[indice];
           const numero = normalizarNumeroEtiquetaMesclador(etiqueta.numero);
-          if (!numero) return;
+          if (!numero) continue;
           if (mapa.has(numero)) {
             duplicadas++;
-            return;
+            continue;
           }
           mapa.set(numero, { ...etiqueta, numero });
-        });
+          if (indice && indice % 2000 === 0) {
+            status.textContent = `Mesclando: ${indice.toLocaleString('pt-BR')} de ${novas.length.toLocaleString('pt-BR')} etiquetas...`;
+            await liberarInterface();
+          }
+        }
 
         return { etiquetas: Array.from(mapa.values()), duplicadas };
       }
@@ -971,81 +1006,144 @@ btnMerge.addEventListener("click", async () => {
         ].join('\r\n')).join('\r\n\r\n');
       }
 
-      function renderizar() {
-        txtFinal = montarTxtEtiquetas(etiquetas);
-        output.value = txtFinal;
+      function etiquetasFiltradas() {
+        const ano = filtroAno.value;
+        const termo = busca.value.trim().toLocaleLowerCase('pt-BR');
+        return etiquetas.filter(etiqueta => {
+          if (ano && !String(etiqueta.numero || '').endsWith(`/${ano}`)) return false;
+          if (!termo) return true;
+          return `${etiqueta.numero} ${etiqueta.interessado} ${etiqueta.assunto} ${etiqueta.sumula}`.toLocaleLowerCase('pt-BR').includes(termo);
+        });
+      }
+
+      function atualizarAnos() {
+        const selecionado = filtroAno.value;
+        const anos = Array.from(new Set(etiquetas.map(etiqueta => String(etiqueta.numero || '').split('/')[1]).filter(Boolean)))
+          .sort((a, b) => Number(b) - Number(a));
+        filtroAno.innerHTML = '<option value="">Todos os anos</option>' + anos.map(ano => `<option value="${ano}">${ano}</option>`).join('');
+        if (anos.includes(selecionado)) filtroAno.value = selecionado;
+      }
+
+      function renderizar(atualizarFiltroAnos = false) {
+        if (atualizarFiltroAnos) atualizarAnos();
         btnBaixar.disabled = !etiquetas.length;
+        btnBaixarAno.disabled = !etiquetas.length || !filtroAno.value;
         status.textContent = etiquetas.length
-          ? `${etiquetas.length} etiqueta(s) importada(s) e mesclada(s).`
+          ? `${etiquetas.length.toLocaleString('pt-BR')} etiqueta(s) importada(s) e mesclada(s).`
           : 'Nenhuma etiqueta importada.';
 
         if (!etiquetas.length) {
           preview.innerHTML = '<div class="empty">Importe um ou mais arquivos TXT para visualizar as etiquetas.</div>';
+          output.value = '';
+          paginacao.style.display = 'none';
           return;
         }
+
+        const filtradas = etiquetasFiltradas();
+        const limite = Number(porPagina.value || 100);
+        const totalPaginas = Math.max(1, Math.ceil(filtradas.length / limite));
+        paginaAtual = Math.min(Math.max(1, paginaAtual), totalPaginas);
+        const inicio = (paginaAtual - 1) * limite;
+        const pagina = filtradas.slice(inicio, inicio + limite);
+        output.value = montarTxtEtiquetas(filtradas.slice(0, 5)) + (filtradas.length > 5 ? `\r\n\r\n... PRÉVIA DE 5 ENTRE ${filtradas.length.toLocaleString('pt-BR')} ETIQUETAS ...` : '');
 
         preview.innerHTML = `
           <div style="overflow:auto">
             <table>
-              <thead>
-                <tr><th>#</th><th>Processo</th><th>Data</th><th>Interessado</th><th>Assunto</th></tr>
-              </thead>
+              <thead><tr><th>#</th><th>Processo</th><th>Data</th><th>Interessado</th><th>Assunto</th></tr></thead>
               <tbody>
-                ${etiquetas.map((etiqueta, idx) => `
+                ${pagina.map((etiqueta, idx) => `
                   <tr>
-                    <td>${idx + 1}</td>
-                    <td><strong>${etiqueta.numero || ''}</strong></td>
-                    <td>${etiqueta.dataCriacao || ''}</td>
-                    <td>${etiqueta.interessado || ''}</td>
-                    <td>${etiqueta.assunto || ''}</td>
+                    <td>${inicio + idx + 1}</td>
+                    <td><strong>${escMesclador(etiqueta.numero)}</strong></td>
+                    <td>${escMesclador(etiqueta.dataCriacao)}</td>
+                    <td>${escMesclador(etiqueta.interessado)}</td>
+                    <td>${escMesclador(etiqueta.assunto)}</td>
                   </tr>
                 `).join('')}
               </tbody>
             </table>
           </div>
         `;
+        paginacao.style.display = 'flex';
+        paginaTexto.textContent = `Página ${paginaAtual} de ${totalPaginas} — ${filtradas.length.toLocaleString('pt-BR')} resultado(s)`;
+        btnAnterior.disabled = paginaAtual <= 1;
+        btnProxima.disabled = paginaAtual >= totalPaginas;
+      }
+
+      async function baixarEtiquetas(lista, sufixo) {
+        if (!lista.length) return alert('Nenhuma etiqueta disponível para exportação.');
+        const botao = sufixo ? btnBaixarAno : btnBaixar;
+        const textoOriginal = botao.textContent;
+        botao.disabled = true;
+        botao.textContent = 'Preparando...';
+        await liberarInterface();
+        const txtFinal = montarTxtEtiquetas(lista);
+        const blob = new Blob([txtFinal], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const agora = new Date();
+        const dataHora = agora.toLocaleString('pt-BR').replace(/\D/g, '').replace(/^(\d{2})(\d{2})(\d{4})(\d{2})(\d{2})(\d{2}).*$/, '$3$2$1_$4$5$6');
+        a.download = `etiquetas_mescladas${sufixo ? `_${sufixo}` : ''}_${dataHora}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+        botao.textContent = textoOriginal;
+        botao.disabled = false;
       }
 
       btnImportar.onclick = () => input.click();
       btnLimpar.onclick = () => {
         etiquetas = [];
         input.value = '';
-        renderizar();
+        busca.value = '';
+        filtroAno.value = '';
+        paginaAtual = 1;
+        renderizar(true);
       };
-      btnBaixar.onclick = () => {
-        if (!txtFinal) return;
-        const blob = new Blob([txtFinal], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        const agora = new Date();
-        const dataHora = agora.toLocaleString('pt-BR')
-          .replace(/\D/g, '')
-          .replace(/^(\d{2})(\d{2})(\d{4})(\d{2})(\d{2})(\d{2}).*$/, '$3$2$1_$4$5$6');
-        a.download = `etiquetas_mescladas_${dataHora}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
+      btnBaixar.onclick = () => baixarEtiquetas(etiquetas, '');
+      btnBaixarAno.onclick = () => baixarEtiquetas(
+        etiquetas.filter(etiqueta => String(etiqueta.numero || '').endsWith(`/${filtroAno.value}`)),
+        filtroAno.value
+      );
+      filtroAno.onchange = () => { paginaAtual = 1; renderizar(); };
+      let buscaTimer = null;
+      busca.oninput = () => {
+        clearTimeout(buscaTimer);
+        buscaTimer = setTimeout(() => { paginaAtual = 1; renderizar(); }, 250);
       };
+      porPagina.onchange = () => { paginaAtual = 1; renderizar(); };
+      btnAnterior.onclick = () => { paginaAtual--; renderizar(); };
+      btnProxima.onclick = () => { paginaAtual++; renderizar(); };
       input.onchange = async () => {
         const files = Array.from(input.files || []);
         if (!files.length) return;
-
-        const novas = [];
-        for (const file of files) {
-          const texto = await file.text();
-          novas.push(...extrairEtiquetasMesclador(texto));
-        }
-
-        if (!novas.length) {
-          alert('Nenhuma etiqueta válida foi encontrada nos arquivos selecionados.');
-          return;
-        }
-
-        const mescla = mesclarEtiquetasSemDuplicidade(etiquetas, novas);
-        etiquetas = mescla.etiquetas;
-        renderizar();
-        if (mescla.duplicadas) {
-          status.textContent += ` ${mescla.duplicadas} etiqueta(s) duplicada(s) ignorada(s).`;
+        btnImportar.disabled = true;
+        btnImportar.textContent = 'Importando...';
+        let novas = [];
+        try {
+          for (const file of files) {
+            status.textContent = `Lendo ${file.name}...`;
+            const texto = await file.text();
+            novas = novas.concat(await extrairEtiquetasMesclador(texto, file.name));
+          }
+          if (!novas.length) {
+            alert('Nenhuma etiqueta válida foi encontrada nos arquivos selecionados.');
+            return;
+          }
+          const mescla = await mesclarEtiquetasSemDuplicidade(etiquetas, novas);
+          etiquetas = mescla.etiquetas;
+          paginaAtual = 1;
+          renderizar(true);
+          if (mescla.duplicadas) status.textContent += ` ${mescla.duplicadas.toLocaleString('pt-BR')} etiqueta(s) duplicada(s) ignorada(s).`;
+        } catch (error) {
+          console.error('Erro ao importar etiquetas:', error);
+          status.textContent = `Erro na importação: ${error?.message || error}`;
+          alert('Não foi possível concluir a importação das etiquetas. Consulte o console para mais detalhes.');
+        } finally {
+          btnImportar.disabled = false;
+          btnImportar.textContent = 'Importar etiquetas TXT';
+          input.value = '';
         }
       };
 
